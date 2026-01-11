@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="OFFline_Spotify.ReplaceMp3Page"
+             Title="Replace MP3 File"
+             Shell.ForegroundColor="#e3e3e3"
+             Shell.BackgroundColor="#2a2a2a"
+             Shell.TitleColor="#e3e3e3"
+             Shell.TabBarBackgroundColor="#2a2a2a"
+             Shell.TabBarForegroundColor="#e3e3e3">
+
+    <ScrollView>
+        <VerticalStackLayout Spacing="20" Padding="20">
+
+            <!-- Song Information -->
+            <Frame BackgroundColor="#2a2a2a" BorderColor="#3a3a3a">
+                <VerticalStackLayout Spacing="10">
+                    <Label Text="Song Information" 
+                           FontAttributes="Bold" 
+                           FontSize="18" 
+                           TextColor="#e3e3e3"/>
+
+                    <Label x:Name="SongTitleLabel" 
+                           Text="Song Title" 
+                           FontAttributes="Bold" 
+                           FontSize="16" 
+                           TextColor="#e3e3e3"/>
+
+                    <Label x:Name="SongArtistLabel" 
+                           Text="Artist" 
+                           FontSize="14" 
+                           TextColor="#b3b3b3"/>
+
+                    <Label x:Name="CurrentFileLabel" 
+                           Text="Current file: No file assigned" 
+                           FontSize="12" 
+                           TextColor="#888888"/>
+                </VerticalStackLayout>
+            </Frame>
+
+            <!-- File Selection -->
+            <Frame BackgroundColor="#2a2a2a" BorderColor="#3a3a3a">
+                <VerticalStackLayout Spacing="15">
+                    <Label Text="Select New MP3 File" 
+                           FontAttributes="Bold" 
+                           FontSize="16" 
+                           TextColor="#e3e3e3"/>
+
+                    <Button x:Name="BrowseFileButton"
+                            Text="Browse for MP3 File"
+                            Style="{StaticResource GradientButtonStyle}"
+                            Clicked="BrowseFile_Clicked"
+                            HorizontalOptions="Fill"/>
+
+                    <Label x:Name="SelectedFileLabel" 
+                           Text="No file selected" 
+                           FontSize="12" 
+                           TextColor="#b3b3b3"
+                           IsVisible="False"/>
+                </VerticalStackLayout>
+            </Frame>
+
+            <!-- Action Buttons -->
+            <VerticalStackLayout Spacing="10">
+                <Button x:Name="ReplaceButton"
+                        Text="Replace MP3 File"
+                        Style="{StaticResource GradientButtonStyle}"
+                        Clicked="Replace_Clicked"
+                        IsEnabled="False"
+                        HorizontalOptions="Fill"/>
+
+                <Button x:Name="RemoveButton"
+                        Text="Remove Current File"
+                        BackgroundColor="#d32f2f"
+                        TextColor="White"
+                        Clicked="Remove_Clicked"
+                        HorizontalOptions="Fill"/>
+
+                <Button x:Name="CancelButton"
+                        Text="Cancel"
+                        BackgroundColor="Transparent"
+                        BorderColor="#666666"
+                        BorderWidth="1"
+                        TextColor="#e3e3e3"
+                        Clicked="Cancel_Clicked"
+                        HorizontalOptions="Fill"/>
+            </VerticalStackLayout>
+
+            <!-- Status Label -->
+            <Label x:Name="StatusLabel" 
+                   Text="" 
+                   FontSize="14" 
+                   TextColor="#4caf50"
+                   HorizontalOptions="Center"
+                   IsVisible="False"/>
+
+        </VerticalStackLayout>
+    </ScrollView>
+</ContentPage>

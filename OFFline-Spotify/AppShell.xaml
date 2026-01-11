@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<Shell
+    x:Class="OFFline_Spotify.AppShell"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:local="clr-namespace:OFFline_Spotify"
+    Title="OFFline_Spotify"
+    Shell.ForegroundColor="#e3e3e3"
+    Shell.BackgroundColor="#2a2a2a"
+    Shell.TitleColor="#e3e3e3"
+    Shell.TabBarBackgroundColor="#2a2a2a"
+    Shell.TabBarForegroundColor="#e3e3e3">
+
+    <ShellContent
+        Title="Home"
+        ContentTemplate="{DataTemplate local:MainPage}"
+        Route="MainPage" />
+    <ShellContent
+        Title="Download"
+        ContentTemplate="{DataTemplate local:Download}"
+        Route="Download" />
+    <ShellContent
+        Title="Playlists"
+        ContentTemplate="{DataTemplate local:Playlists}" 
+        Route="Playlists" />
+    
+</Shell>

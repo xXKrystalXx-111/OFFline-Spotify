@@ -1,18 +1,11 @@
-using Microsoft.Maui.ApplicationModel;
-using OpenQA.Selenium;
-using OpenQA.Selenium.Appium;
-using OpenQA.Selenium.Appium.Android;
-using OpenQA.Selenium.Chrome;
-using OpenQA.Selenium.Support.UI;
-using SeleniumExtras.WaitHelpers;
-using SpotifyAPI.Web;
-using SQLite;
-using System.Collections.Generic;
+ï»¿using OpenQA.Selenium;
 using System.Diagnostics;
-using System.Runtime.InteropServices;
+using System.Net.Sockets;
+using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using System.IO.Compression;
 
 namespace OFFline_Spotify;
 
@@ -20,38 +13,33 @@ public partial class Download : ContentPage
 {
     private readonly Random _random = new Random();
     
-    private bool _isDownloading = false; // Add this flag
-    private bool _isDisposed = false; // Add at the class level
-    private bool _isNavigating = false; // Add at the class level
+    private bool _isDownloading = false;
+    private bool _isDisposed = false;
+    private bool _isNavigating = false;
     private IWebDriver? _activeDriver = null;
+
+    // Configuration for Python server
+    private const string SERVER_HOST = "192.168.1.49"; // Change to remote PC IP if needed
+    private const int SERVER_PORT = 9999;
+    private const long BUFFER_SIZE = 3000000000;
 
     public Download()
     {
         InitializeComponent();
     }
-    private async void CopyToClipboard(object? sender, EventArgs e)
-    {
-        await Clipboard.Default.SetTextAsync("https://accounts.spotify.com/authorize?\r\nclient_id=8b7005e57c154538abd4ebfe3cf00ed3&response_type=code&\r\nredirect_uri=https%3A%2F%2Foauth.pstmn.io%2Fv1%2Fcallback&\r\n&scope=playlist-read-private%20playlist-read-collaborative");
-        await DisplayAlert("Copied", "Now paste this link in browser url and obtain authorisation code!(login to spotify may be needed)", "OK");
-    }
+    
     private async void OnDownloadbuttonnClicked(object sender, EventArgs e)
     {
-        // Validate required fields FIRST
         if (!ValidateInputs())
-        {
-            return; // Stop if validation fails
-        }
+            return;
 
-        // Prevent multiple simultaneous downloads
         if (_isDownloading)
         {
-            await DisplayAlert("Download in Progress", "A download is already in progress. Please wait.", "OK");
+            await DisplayAlert("Download in Progress", "Please wait for the current download to complete.", "OK");
             return;
         }
 
-        _isDownloading = true; // Set flag to prevent multiple downloads
         await OnDownload();
-        _isDownloading = false; // Reset flag when done
     }
 
     // Add this new validation method
@@ -62,30 +50,24 @@ public partial class Download : ContentPage
 
         // Clear previous error styling
         PlaylistsLink.BackgroundColor = Colors.White;
-        SpotiAuth.BackgroundColor = Colors.White;
+        
 
         // Validate Playlist Link
         if (string.IsNullOrWhiteSpace(PlaylistsLink.Text))
         {
             PlaylistsLink.BackgroundColor = Color.FromArgb("#FFE0E0"); // Light red
-            errorMessage += "• Playlist link is required\n";
+            errorMessage += "â€¢ Playlist link is required\n";
             isValid = false;
         }
 
-        // Validate Spotify Auth Code
-        if (string.IsNullOrWhiteSpace(SpotiAuth.Text))
-        {
-            SpotiAuth.BackgroundColor = Color.FromArgb("#FFE0E0"); // Light red
-            errorMessage += "• Spotify authorization code is required\n";
-            isValid = false;
-        }
+       
 
         // Show error message if validation failed
         if (!isValid)
         {
             ErrorLabel.Text = errorMessage;
             ErrorLabel.TextColor = Colors.Red;
-            DisplayAlert("Required Fields", "Please fill in all required fields before downloading.", "OK");
+            DisplayAlert("Required Fields", "Please fill in required field before downloading.", "OK");
         }
         else
         {
@@ -101,541 +83,631 @@ public partial class Download : ContentPage
         await Task.Delay(_random.Next(minMs, maxMs));
     }
 
-    public async Task FuckAds(IWebDriver driver)
-    {
-        var iframes = driver.FindElements(By.CssSelector("iframe[style*='width: 100%'][style*='z-index: 2147483647']"));
-        if (iframes.Count > 0)
-        {
-            driver.SwitchTo().Frame(iframes[0]);
-            string style = "align-items: center !important; border-color: rgb(229, 229, 229) !important; border-radius: 0.8em !important; border-style: solid !important; border-width: 1px !important; display: flex !important; flex-direction: column !important; font-size: 1.6em !important; font-weight: bold !important; justify-content: center !important; line-height: 113% !important; padding: 0.8em 0px !important; cursor: pointer !important; white-space: nowrap !important; max-width: 114px !important; width: 35% !important; bottom: 0px !important; left: 0px !important; position: absolute !important; opacity: 1 !important;";
-            var adSpans = driver.FindElements(By.CssSelector($"span[style=\"{style}\"]"));
-            if (adSpans.Count > 0)
-            {
-                adSpans[0].Click();
-                await RandomDelay(500, 1500);
-            }
-            driver.SwitchTo().DefaultContent();
-        }
-    }
-
     public async Task OnDownload()
     {
-        if (DeviceInfo.Platform == DevicePlatform.Android)
-        {
-            var appiumOptions = new AppiumOptions();
-            appiumOptions.PlatformName = "Android";
-            appiumOptions.AddAdditionalOption("deviceName", "Android Emulator");
-            appiumOptions.AddAdditionalOption("browserName", "Chrome");
-            appiumOptions.AddAdditionalOption("automationName", "UiAutomator2");
-            appiumOptions.AddAdditionalOption("chromedriverExecutable", "path/to/chromedriver");
-
-            // Anti-detection capabilities
-            appiumOptions.AddAdditionalOption("excludeSwitches", new[] { "enable-automation" });
-            appiumOptions.AddAdditionalOption("useAutomationExtension", false);
-
-            var mobileUserAgent = "Mozilla/5.0 (Linux; Android 13; Pixel 6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Mobile Safari/537.36";
-            appiumOptions.AddAdditionalOption("userAgent", mobileUserAgent);
-
-            try
-            {
-                using var driver = new AndroidDriver(new Uri("http://127.0.0.1:4723/wd/hub"), appiumOptions);
-
-                // Execute anti-detection script
-                var script = @"
-                    Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-                    Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
-                    Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
-                ";
-                ((IJavaScriptExecutor)driver).ExecuteScript(script);
-
-                await RandomDelay();
-                driver.Navigate().GoToUrl("https://soundloaders.app");
-
-                // Simulate human-like behavior
-                for (int i = 0; i < 3; i++)
-                {
-                    await RandomDelay(1000, 3000);
-                    ((IJavaScriptExecutor)driver).ExecuteScript($"window.scrollTo(0, {_random.Next(300, 1000)})");
-                }
-
-                await RandomDelay(8000, 12000);
-                driver.Quit();
-            }
-            catch (Exception ex)
-            {
-                await DisplayAlert("Error", $"Failed to initialize driver: {ex.Message}", "OK");
-            }
-        }
-        else if (DeviceInfo.Platform == DevicePlatform.WinUI)
-        {
-            var options = new ChromeOptions();
-            options.BinaryLocation = @"C:\Program Files\BraveSoftware\Brave-Browser\Application\brave.exe";
-            
-            // Flagi anty-detekcyjne
-            options.AddArgument("--disable-blink-features=AutomationControlled");
-            options.AddArgument("--disable-features=site-per-process");
-            options.AddArgument("--disable-web-security");
-            options.AddArgument("--start-maximized");
-            options.AddArgument("--disable-infobars");
-            options.AddArgument("--disable-notifications");
-            options.AddArgument("--disable-popup-blocking");
-            options.AddArgument("--no-sandbox");
-            options.AddArgument("--headless");
-            // Usuniêcie flag automatyzacji
-            options.AddExcludedArgument("enable-automation");
-            options.AddAdditionalOption("useAutomationExtension", false);
-            
-            // User-Agent
-            options.AddArgument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36");
-            
-            // Use a persistent Brave Selenium profile directory
-            string seleniumProfilePath = Path.Combine(FileSystem.AppDataDirectory, "BraveSeleniumProfile");
-            Directory.CreateDirectory(seleniumProfilePath); // Ensure the directory exists
-            options.AddArgument($"--user-data-dir={seleniumProfilePath}");
-            
-            // Preferencje u¿ytkownika
-            options.AddUserProfilePreference("credentials_enable_service", false);
-            options.AddUserProfilePreference("profile.password_manager_enabled", false);
-            options.AddUserProfilePreference("profile.default_content_setting_values.notifications", 2);
-            options.AddUserProfilePreference("profile.default_content_setting_values.popups", 2);
-            options.AddUserProfilePreference("profile.default_content_setting_values.automatic_downloads", 2);
-            options.AddUserProfilePreference("download.prompt_for_download", false);
-            options.AddUserProfilePreference("download.directory_upgrade", true);
-            options.AddUserProfilePreference("download.default_directory", Path.Combine(FileSystem.AppDataDirectory, "Downloads"));
-            options.AddUserProfilePreference("safebrowsing.enabled", false);
-            
-            // Get the managed ChromeDriver path
-            string managedDriverPath = await ChromeDriverManager.GetChromeDriverPathAsync();
-            string chromedriverDir = Path.GetDirectoryName(managedDriverPath);
-ChromeDriverService service = ChromeDriverService.CreateDefaultService(chromedriverDir);
-
-service.HideCommandPromptWindow = true;
-
-IWebDriver? driver = null;
-try
-{
-    Debug.WriteLine("Uruchamiam ChromeDriver...");
-    driver = new ChromeDriver(service, options);
-    Debug.WriteLine("ChromeDriver uruchomiony!");
-    
-    
-    if (App.Database == null)
-    {
-        await DisplayAlert("Error", "Database not initialized", "OK");
-        return;
-    }
-    
-    string playlistUrl = PlaylistsLink.Text;
-    string? playlistId = SpotifyService.ExtractPlaylistIdFromUrl(playlistUrl);
-    
-    if (string.IsNullOrEmpty(playlistId))
-    {
-        await DisplayAlert("Error", "Invalid playlist URL", "OK");
-                    driver.Quit();
-        return;
-    }
-    
-    Debug.WriteLine($"Pobieram id playliœcie: {playlistId}");
-    
-    string clientId = "8b7005e57c154538abd4ebfe3cf00ed3";
-    string clientSecret = "ecc499129c1c49169853acadedfa2a3c";
-    var redirectUri = new Uri("https://oauth.pstmn.io/v1/callback");
-
-    var oAuthClient = new OAuthClient();
-    var tokenResponse = await oAuthClient.RequestToken(
-        new AuthorizationCodeTokenRequest(clientId, clientSecret, SpotiAuth.Text, redirectUri)
-    );
-
-    var spotifyService = new SpotifyService(App.Database);
-    spotifyService.SetAccessToken(tokenResponse.AccessToken);
-
-    var playlistInfo = await spotifyService.GetPlaylistInfoAsync(playlistId);
-    
-    if (playlistInfo == null)
-    {
-        await DisplayAlert("Error", "Failed to get playlist information", "OK");
-        return;
-    }
-    
-    string sanitizedPlaylistName = string.Join("_", playlistInfo.Name.Split(Path.GetInvalidFileNameChars()));
-    string playlistFolderPath = Path.Combine(FileSystem.AppDataDirectory, sanitizedPlaylistName);
-    Directory.CreateDirectory(playlistFolderPath);
-    
-    // Download playlist image
-    string? localImagePath = null;
-    if (!string.IsNullOrEmpty(playlistInfo.ImageUrl))
-    {
-        localImagePath = await spotifyService.DownloadPlaylistImageAsync(playlistInfo.ImageUrl, playlistId, playlistFolderPath);
-        Debug.WriteLine($"Playlist image downloaded to: {localImagePath}");
-    }
-    
-    // Set download directory at runtime using DevTools Protocol
-    var cdpSession = ((ChromeDriver)driver).GetDevToolsSession();
-    ((ChromeDriver)driver).ExecuteCdpCommand("Page.setDownloadBehavior", new Dictionary<string, object>
-    {
-        { "behavior", "allow" },
-        { "downloadPath", playlistFolderPath }
-    });
-    
-    // Wykonaj skrypt anty-detekcji
-    Debug.WriteLine("Wykonujê skrypt anty-detekcyjny...");
-    ((IJavaScriptExecutor)driver).ExecuteScript(@"
-        Object.defineProperty(navigator, 'webdriver', { get: () => false });
-        Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
-        window.chrome = { runtime: {}, loadTimes: function() {}, csi: function() {}, app: {} };
-    ");
-    
-    // Wykonaj pocz¹tkowe operacje z w³¹czon¹ tarcz¹
-    Debug.WriteLine("Nawigacja do spotdown.app");
-    ErrorLabel.Text = "Starting download procedure";
-    driver.Navigate().GoToUrl("https://spotdown.app/");
-    await RandomDelay(3000, 5000);
-
-    // Po kilku sekundach wy³¹cz tarczê
-    await SetBraveShield((ChromeDriver)driver, false);
-    Debug.WriteLine("Tarcza Brave wy³¹czona");
-
-    // Kontynuuj normalne operacje
-    // U¿yj WebDriverWait z poprawn¹ obs³ug¹ b³êdów
-    WebDriverWait wait = new WebDriverWait(driver, TimeSpan.FromSeconds(15));
-    
-    
-    // ZnajdŸ pole wyszukiwania
-    try {
-        ErrorLabel.Text = "Interacting with search bar...";
-                    Debug.WriteLine("Szukam pola wyszukiwania");
-        IWebElement inputElement = wait.Until(driver => {
-            try {
-                var element = driver.FindElement(By.Id("search-form-input"));
-                return element.Displayed ? element : null;
-            } catch {
-                return null;
-            }
-        });
+        _isDownloading = true;
         
-        if (inputElement != null && inputElement.Displayed) {
-            // Wpisz URL playlisty z ludzkimi opóŸnieniami
-            ErrorLabel.Text = "Entering playlist URL...";
-                        Debug.WriteLine("Wpisujê URL playlisty");
-            inputElement.Clear();
+        try
+        {
+            // Update UI
+            ErrorLabel.Text = "Connecting to server...";
+            ErrorLabel.TextColor = Colors.Blue;
             
-            foreach (char c in playlistUrl) {
-                inputElement.SendKeys(c.ToString());
-                await Task.Delay(_random.Next(10, 100));  // Ludzkie opóŸnienia
-            }
-            var errors = driver.FindElement(By.Id("error-message"));
-
-            if(errors.Text != "")
+            // Get playlist link(s) - split by newline if multiple
+            string input = PlaylistsLink.Text?.Trim() ?? "";
+            List<string> links = input.Split('\n')
+                .Select(l => l.Trim())
+                .Where(l => !string.IsNullOrWhiteSpace(l))
+                .ToList();
+            
+            if (links.Count == 0)
             {
-                if (ErrorLabel != null)
-                    ErrorLabel.Text = errors.Text;
-                driver.Quit();
+                await DisplayAlert("Error", "No valid playlist links found.", "OK");
                 return;
             }
             
-            await RandomDelay(1000, 2000);
+            // Send request to Python server
+            ErrorLabel.Text = $"Downloading {links.Count} playlist(s)...";
+            var result = await SendDownloadRequestAsync(links);
             
-            // ZnajdŸ i kliknij przycisk wyszukiwania
-            Debug.WriteLine("Szukam przycisku wyszukiwania");
-            IWebElement submitButton = wait.Until(driver => {
-                try {
-                    var element = driver.FindElement(By.Id("search-form__button"));
-                    return element.Displayed && element.Enabled ? element : null;
-                } catch {
-                    return null;
-                }
-            });
-            ErrorLabel.Text = "Submitting search...";
-                        Debug.WriteLine("Clicking search button");
-            submitButton.Click();
-            
-            // Wait for results
-            await RandomDelay(5000, 8000);
-            
-            // Try to find download button
-            try {
-                Debug.WriteLine("Looking for download button");
-                IWebElement downloadButton = wait.Until(driver => {
-                    try {
-                        var element = driver.FindElement(By.Id("download-all-button"));
-                        return element.Displayed && element.Enabled ? element : null;
-                    } catch {
-                        return null;
-                    }
-                });
+            if (result.Success)
+            {
+                ErrorLabel.Text = "Download completed! Saving file...";
+                ErrorLabel.TextColor = Colors.Green;
                 
-                if(downloadButton != null) {
-                    Debug.WriteLine("Clicking download button");
-                    downloadButton.Click();
+                // Save the zip file
+                string zipPath = await SaveZipFileAsync(result.ZipData, result.FileName);
+                
+                // Process the downloaded zip file
+                await ProcessDownloadedPlaylist(zipPath);
+                
+                await DisplayAlert("Success", 
+                    $"Download and processing completed!\nFile: {result.FileName}\nSize: {result.ZipData.Length / 1024 / 1024:F2} MB", 
+                    "OK");
+                
+                ErrorLabel.Text = "âœ“ Download and processing completed successfully!";
+            }
+            else
+            {
+                ErrorLabel.Text = $"Error: {result.ErrorMessage}";
+                ErrorLabel.TextColor = Colors.Red;
+                
+                await DisplayAlert("Download Failed", result.ErrorMessage, "OK");
+            }
+        }
+        catch (Exception ex)
+        {
+            ErrorLabel.Text = $"Error: {ex.Message}";
+            ErrorLabel.TextColor = Colors.Red;
+            
+            await DisplayAlert("Error", $"An error occurred: {ex.Message}", "OK");
+            Debug.WriteLine($"Download error: {ex}");
+        }
+        finally
+        {
+            _isDownloading = false;
+        }
+    }
+
+    private async Task<DownloadResult> SendDownloadRequestAsync(List<string> links)
+    {
+        TcpClient? client = null;
+        NetworkStream? stream = null;
+        
+        try
+        {
+            // Connect to server
+            client = new TcpClient();
+            await client.ConnectAsync(SERVER_HOST, SERVER_PORT);
+            stream = client.GetStream();
+            
+            Debug.WriteLine($"Connected to {SERVER_HOST}:{SERVER_PORT}");
+            
+            // Prepare data to send (newline-separated links)
+            string dataToSend = string.Join("\n", links);
+            byte[] sendData = Encoding.UTF8.GetBytes(dataToSend);
+            
+            // Send data
+            await stream.WriteAsync(sendData, 0, sendData.Length);
+            Debug.WriteLine($"Sent {sendData.Length} bytes to server");
+            
+            // Read response header (4 bytes = header length)
+            byte[] headerLengthBytes = new byte[4];
+            int bytesRead = await stream.ReadAsync(headerLengthBytes, 0, 4);
+            
+            if (bytesRead != 4)
+            {
+                return new DownloadResult 
+                { 
+                    Success = false, 
+                    ErrorMessage = "Failed to read response header" 
+                };
+            }
+            
+            int headerLength = BitConverter.ToInt32(headerLengthBytes, 0);
+            if (BitConverter.IsLittleEndian)
+            {
+                headerLength = System.Net.IPAddress.NetworkToHostOrder(headerLength);
+            }
+            
+            // Read header JSON
+            byte[] headerBytes = new byte[headerLength];
+            bytesRead = await ReadExactlyAsync(stream, headerBytes, headerLength);
+            
+            if (bytesRead != headerLength)
+            {
+                return new DownloadResult 
+                { 
+                    Success = false, 
+                    ErrorMessage = "Failed to read complete header" 
+                };
+            }
+            
+            string headerJson = Encoding.UTF8.GetString(headerBytes);
+            Debug.WriteLine($"Received header: {headerJson}");
+            
+            var header = JsonSerializer.Deserialize<ServerResponse>(headerJson);
+            
+            if (header == null)
+            {
+                return new DownloadResult 
+                { 
+                    Success = false, 
+                    ErrorMessage = "Invalid server response" 
+                };
+            }
+            
+            if (header.status != "success")
+            {
+                return new DownloadResult 
+                { 
+                    Success = false, 
+                    ErrorMessage = header.message ?? "Unknown error" 
+                };
+            }
+            
+            // Read file content
+            long fileSize = header.size;
+            string fileName = header.filename ?? "downloads.zip";
+            
+            Debug.WriteLine($"Receiving file: {fileName} ({fileSize / 1024 / 1024:F2} MB)");
+            
+            byte[] fileData = new byte[fileSize];
+            long totalRead = 0;
+            int lastProgress = 0;
+            
+            while (totalRead < fileSize)
+            {
+                int toRead = (int)Math.Min(BUFFER_SIZE, fileSize - totalRead);
+                bytesRead = await stream.ReadAsync(fileData, (int)totalRead, toRead);
+                
+                if (bytesRead == 0)
+                    break;
+                
+                totalRead += bytesRead;
+                
+                // Update progress every 10%
+                int progress = (int)((totalRead * 100) / fileSize);
+                if (progress >= lastProgress + 10)
+                {
+                    lastProgress = progress;
+                    Debug.WriteLine($"Download progress: {progress}%");
                     
-                    // Wait for download to start
-                    await RandomDelay(10000, 15000);
-                    Debug.WriteLine("Download started");
-                    ErrorLabel.Text = "Downloading songs started";
-                            }
+                    await MainThread.InvokeOnMainThreadAsync(() => 
+                    {
+                        ErrorLabel.Text = $"Downloading... {progress}%";
+                    });
+                }
+            }
+            
+            Debug.WriteLine($"Received {totalRead} bytes");
+            
+            return new DownloadResult 
+            { 
+                Success = true, 
+                ZipData = fileData,
+                FileName = fileName
+            };
+        }
+        catch (SocketException ex)
+        {
+            Debug.WriteLine($"Socket error: {ex.Message}");
+            return new DownloadResult 
+            { 
+                Success = false, 
+                ErrorMessage = $"Connection error: {ex.Message}\nMake sure the server is running on {SERVER_HOST}:{SERVER_PORT}" 
+            };
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Error: {ex}");
+            return new DownloadResult 
+            { 
+                Success = false, 
+                ErrorMessage = ex.Message 
+            };
+        }
+        finally
+        {
+            stream?.Close();
+            client?.Close();
+        }
+    }
+
+    private async Task<int> ReadExactlyAsync(NetworkStream stream, byte[] buffer, int length)
+    {
+        int totalRead = 0;
+        while (totalRead < length)
+        {
+            int bytesRead = await stream.ReadAsync(buffer, totalRead, length - totalRead);
+            if (bytesRead == 0)
+                break;
+            totalRead += bytesRead;
+        }
+        return totalRead;
+    }
+
+    private async Task<string> SaveZipFileAsync(byte[] zipData, string fileName)
+    {
+        try
+        {
+            // Use app's local data directory (accessible by app, survives app restarts)
+            string downloadFolder = Path.Combine(FileSystem.AppDataDirectory, "Downloads");
+            Directory.CreateDirectory(downloadFolder);
+            
+            string filePath = Path.Combine(downloadFolder, fileName);
+            
+            // Make sure filename is unique
+            int counter = 1;
+            while (File.Exists(filePath))
+            {
+                string nameWithoutExt = Path.GetFileNameWithoutExtension(fileName);
+                string extension = Path.GetExtension(fileName);
+                filePath = Path.Combine(downloadFolder, $"{nameWithoutExt}_{counter}{extension}");
+                counter++;
+            }
+            
+            await File.WriteAllBytesAsync(filePath, zipData);
+            Debug.WriteLine($"File saved: {filePath}");
+            Debug.WriteLine($"AppDataDirectory: {FileSystem.AppDataDirectory}");
+            
+            await MainThread.InvokeOnMainThreadAsync(() => 
+            {
+                ErrorLabel.Text = $"âœ“ Saved: {Path.GetFileName(filePath)}";
+            });
+            
+            return filePath;
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Error saving file: {ex.Message}");
+            throw;
+        }
+    }
+
+    private async Task ProcessDownloadedPlaylist(string zipFilePath)
+    {
+        try
+        {
+            await MainThread.InvokeOnMainThreadAsync(() => 
+            {
+                ErrorLabel.Text = "Processing downloaded playlist...";
+                ErrorLabel.TextColor = Colors.Blue;
+            });
+
+            Debug.WriteLine($"Starting to process zip file: {zipFilePath}");
+
+            // Get playlist name from zip file name (without .zip extension)
+            string playlistName = Path.GetFileNameWithoutExtension(zipFilePath);
+            Debug.WriteLine($"Playlist name from zip file: {playlistName}");
+
+            // 1. Extract the zip file
+            string extractPath = Path.Combine(Path.GetDirectoryName(zipFilePath)!, playlistName + "_temp");
+            
+            if (Directory.Exists(extractPath))
+            {
+                Directory.Delete(extractPath, true);
+            }
+            
+            await MainThread.InvokeOnMainThreadAsync(() => 
+            {
+                ErrorLabel.Text = "Extracting files...";
+            });
+            
+            ZipFile.ExtractToDirectory(zipFilePath, extractPath);
+            Debug.WriteLine($"Extracted to: {extractPath}");
+
+            // 2. Find the actual playlist folder (first subdirectory)
+            var subdirectories = Directory.GetDirectories(extractPath);
+            if (subdirectories.Length == 0)
+            {
+                Debug.WriteLine("Warning: No playlist folder found in the zip file. Creating empty playlist.");
                 
-                // *** FIX FOR THE ENDLESS LOOP ***
-                bool downloadCompleted = false; // Declare the variable once at the top
-                 // Track the start time of the download
-                 await RandomDelay(5000, 5000);
-                while (!downloadCompleted)
+                // Create empty playlist folder
+                string emptyPlaylistFolder = Path.Combine(extractPath, playlistName);
+                Directory.CreateDirectory(emptyPlaylistFolder);
+                subdirectories = new[] { emptyPlaylistFolder };
+            }
+            
+            string playlistFolder = subdirectories[0];
+            Debug.WriteLine($"Found playlist folder inside zip: {Path.GetFileName(playlistFolder)}");
+
+            // 3. Move the playlist folder one directory back (to AppDataDirectory) with the zip file name
+            string targetPlaylistPath = Path.Combine(FileSystem.AppDataDirectory, playlistName);
+            
+            // If target already exists, delete it
+            if (Directory.Exists(targetPlaylistPath))
+            {
+                Debug.WriteLine($"Removing existing playlist folder: {targetPlaylistPath}");
+                Directory.Delete(targetPlaylistPath, true);
+            }
+            
+            await MainThread.InvokeOnMainThreadAsync(() => 
+            {
+                ErrorLabel.Text = "Organizing files...";
+            });
+            
+            Directory.Move(playlistFolder, targetPlaylistPath);
+            Debug.WriteLine($"Moved playlist to: {targetPlaylistPath}");
+
+            // 4. Move all MP3 files from songs folder to playlist root
+            string songsFolder = Path.Combine(targetPlaylistPath, "songs");
+            if (Directory.Exists(songsFolder))
+            {
+                var mp3Files = Directory.GetFiles(songsFolder, "*.mp3");
+                Debug.WriteLine($"Found {mp3Files.Length} MP3 files in songs folder");
+                
+                foreach (var mp3File in mp3Files)
                 {
-                    try
+                    string fileName = Path.GetFileName(mp3File);
+                    string targetPath = Path.Combine(targetPlaylistPath, fileName);
+                    
+                    // Handle duplicate filenames
+                    int counter = 1;
+                    while (File.Exists(targetPath))
                     {
-                        // Check if the download has exceeded the 10-minute timeout
-                        
-
-                        // Re-check for completion message each iteration
-                        var allDoneElements = driver.FindElements(By.Id("allDownloadedMessage"));
-
-                        if (allDoneElements.Count > 0)
-                        {
-                            downloadCompleted = true;
-                            Debug.WriteLine("Download completed - found allDownloadedMessage element!");
-                            break; // Exit the loop
-                        }
-
-                        // Update progress if available
-                        try
-                        {
-                            var progressDiv = driver.FindElement(By.Id("downloadProgress"));
-                            string currentProgress = progressDiv.Text;
-                            Debug.WriteLine($"Download progress: {currentProgress}");
-
-                            // Update UI on main thread
-                            MainThread.BeginInvokeOnMainThread(() =>
-                            {
-                                if (ErrorLabel != null)
-                                {
-                                    if(currentProgress.Contains("/"))
-                                    {
-                                        ErrorLabel.Text = currentProgress;
-                                    }
-                                    else
-                                    {
-                                        downloadCompleted = true;
-                                    }
-                                }
-                            });
-                            if(currentProgress == null)
-                            {
-                               Debug.WriteLine("Brak postêpu pobierania, przerywam pêtlê.");
-                                break;
-                            }
-                        }
-                        catch (Exception progressEx)
-                        {
-                            Debug.WriteLine($"Could not read progress: {progressEx.Message}");
-                        }
-
-                        // Wait 1 second before checking again
-                        await Task.Delay(1000);
+                        string nameWithoutExt = Path.GetFileNameWithoutExtension(fileName);
+                        string extension = Path.GetExtension(fileName);
+                        targetPath = Path.Combine(targetPlaylistPath, $"{nameWithoutExt}_{counter}{extension}");
+                        counter++;
                     }
-                    catch (Exception loopEx)
+                    
+                    File.Move(mp3File, targetPath);
+                    Debug.WriteLine($"Moved MP3: {fileName} -> {Path.GetFileName(targetPath)}");
+                }
+                
+                // Delete the now-empty songs folder
+                Directory.Delete(songsFolder, true);
+                Debug.WriteLine("Deleted songs folder");
+            }
+            else
+            {
+                Debug.WriteLine("No songs folder found - playlist may be empty");
+            }
+
+            // 5. Integrate with database (using zip file name as playlist name)
+            await MainThread.InvokeOnMainThreadAsync(() => 
+            {
+                ErrorLabel.Text = "Integrating with database...";
+            });
+            
+            await IntegratePlaylistWithDatabase(targetPlaylistPath, playlistName);
+
+            // 6. Clean up
+            Directory.Delete(extractPath, true);
+            File.Delete(zipFilePath);
+            Debug.WriteLine("Cleanup completed");
+
+            await MainThread.InvokeOnMainThreadAsync(() => 
+            {
+                ErrorLabel.Text = "âœ“ Processing completed!";
+                ErrorLabel.TextColor = Colors.Green;
+            });
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Error processing playlist: {ex.Message}");
+            Debug.WriteLine($"Stack trace: {ex.StackTrace}");
+            throw new Exception($"Failed to process playlist: {ex.Message}", ex);
+        }
+    }
+
+    private async Task IntegratePlaylistWithDatabase(string playlistPath, string playlistName)
+    {
+        try
+        {
+            if (App.Database == null)
+            {
+                throw new Exception("Database not initialized");
+            }
+
+            // Read SONGS_DATA.txt
+            string songsDataPath = Path.Combine(playlistPath, "SONGS_DATA.txt");
+            
+            var songInfoList = new List<(int order, string title, string artist)>();
+            
+            if (File.Exists(songsDataPath))
+            {
+                var lines = await File.ReadAllLinesAsync(songsDataPath);
+                Debug.WriteLine($"Read {lines.Length} lines from SONGS_DATA.txt");
+
+                // Parse song data
+                foreach (var line in lines)
+                {
+                    if (string.IsNullOrWhiteSpace(line)) continue;
+                    
+                    // Parse format: "1. Artist - Title" or "1. Title"
+                    var match = System.Text.RegularExpressions.Regex.Match(line, @"^(\d+)\.\s+(.+)$");
+                    if (match.Success)
                     {
-                        Debug.WriteLine($"Error in download monitoring loop: {loopEx.Message}");
-                        await Task.Delay(1000);
+                        int order = int.Parse(match.Groups[1].Value);
+                        string titleArtist = match.Groups[2].Value.Trim();
+                        
+                        // Split by " - " to separate artist and title
+                        string artist = "";
+                        string title = titleArtist;
+                        
+                        int dashIndex = titleArtist.IndexOf(" - ");
+                        if (dashIndex > 0)
+                        {
+                            artist = titleArtist.Substring(0, dashIndex).Trim();
+                            title = titleArtist.Substring(dashIndex + 3).Trim();
+                        }
+                        
+                        songInfoList.Add((order, title, artist));
+                        Debug.WriteLine($"Parsed: Order={order}, Artist='{artist}', Title='{title}'");
                     }
                 }
 
-                if (!downloadCompleted)
+                // Sort by order (ascending)
+                songInfoList = songInfoList.OrderBy(s => s.order).ToList();
+            }
+            else
+            {
+                Debug.WriteLine("Warning: SONGS_DATA.txt not found - creating empty playlist");
+            }
+
+            // Find playlist image
+            string? imagePath = FindPlaylistImage(playlistPath);
+            if (imagePath != null)
+            {
+                Debug.WriteLine($"Found playlist image: {imagePath}");
+            }
+
+            // Create or update playlist entity (even if no songs)
+            var playlist = new PlaylistEntity
+            {
+                Name = playlistName,
+                SpotifyId = $"downloaded_{Guid.NewGuid():N}", // Generate unique ID for downloaded playlists
+                ImagePath = imagePath,
+                TotalTracks = songInfoList.Count,
+                CreatedAt = DateTime.UtcNow
+            };
+
+            int playlistId = await App.Database.SavePlaylistAsync(playlist);
+            Debug.WriteLine($"Saved playlist with ID: {playlistId} (Songs: {songInfoList.Count})");
+
+            if (songInfoList.Count == 0)
+            {
+                Debug.WriteLine("Empty playlist saved - can be fixed later with 'fix download' feature");
+                return;
+            }
+
+            // Get all MP3 files in the playlist folder
+            var mp3Files = Directory.GetFiles(playlistPath, "*.mp3");
+            Debug.WriteLine($"Found {mp3Files.Length} MP3 files in playlist folder");
+
+            // Create song entities and match with MP3 files
+            foreach (var songInfo in songInfoList)
+            {
+                // Try to match MP3 file
+                string? mp3Path = FindBestMatchingMp3(mp3Files, songInfo.title, songInfo.artist);
+                
+                var song = new SongEntity
                 {
-                    Debug.WriteLine("Download timed out or failed");
-                    await DisplayAlert("Warning", "Download may have timed out. Check the download folder.", "OK");
+                    PlaylistId = playlistId,
+                    Title = songInfo.title,
+                    Artist = string.IsNullOrEmpty(songInfo.artist) ? "Unknown Artist" : songInfo.artist,
+                    Mp3FilePath = mp3Path,
+                    DurationMs = 0, // Will be updated when played
+                    CreatedAt = DateTime.UtcNow
+                };
+
+                await App.Database.SaveSongAsync(song);
+                
+                if (mp3Path != null)
+                {
+                    Debug.WriteLine($"Saved song: '{song.Title}' by '{song.Artist}' -> {Path.GetFileName(mp3Path)}");
                 }
                 else
                 {
-                    Debug.WriteLine("Download completed! Saving to database...");
+                    Debug.WriteLine($"Saved song WITHOUT MP3: '{song.Title}' by '{song.Artist}'");
                 }
-                
-                // *** DATABASE INTEGRATION: Save playlist and songs to database after download ***
-try
-{
-    // Show loading indicator
-    await MainThread.InvokeOnMainThreadAsync(() => {
-        if (ErrorLabel != null)
-            ErrorLabel.Text = "Saving playlist to database...";
-    });
-    
-    Debug.WriteLine("Starting database save operation");
-    
-    // Save complete playlist with downloaded files to database
-    var dbPlaylistId = await App.Database!.SavePlaylistWithSongsAsync(playlistInfo, localImagePath, playlistFolderPath);
-    Debug.WriteLine($"Playlist saved to database with ID: {dbPlaylistId}");
-    
-    // CRITICAL: Store driver reference
-    _activeDriver = driver;
-    
-    // Dispose driver completely
-    if (_activeDriver != null)
-    {
-        try 
-        {
-            Debug.WriteLine("Disposing ChromeDriver");
-            _activeDriver.Quit();
-            _activeDriver.Dispose();
-            _activeDriver = null;
-            driver = null;
-        }
-        catch (Exception driverEx)
-        {
-            Debug.WriteLine($"Error disposing driver: {driverEx.Message}");
-        }
-    }
-    
-    // Force cleanup
-    GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, true, true);
-    GC.WaitForPendingFinalizers();
-    GC.Collect();
-    
-    await Task.Delay(1000);
-    
-    Debug.WriteLine("Preparing to show dialog");
-    
-    // WINDOWS FIX: Use Dispatcher to ensure proper threading
-    await Microsoft.Maui.ApplicationModel.MainThread.InvokeOnMainThreadAsync(async () => {
-        try
-        {
-            Debug.WriteLine("Showing success alert");
-            await DisplayAlert("Success", "Playlist downloaded and saved successfully!", "OK");
-            Debug.WriteLine("Alert dismissed");
-        }
-        catch (Exception alertEx)
-        {
-            Debug.WriteLine($"Alert error: {alertEx.Message}");
-        }
-    });
-    
-    // CRITICAL FIX: Instead of navigating, close this page and let MainPage refresh
-    await Task.Delay(1000);
-    
-    Debug.WriteLine("Closing download page");
-    
-    // Method 1: Just pop the current page (safest for Windows)
-    await Microsoft.Maui.ApplicationModel.MainThread.InvokeOnMainThreadAsync(async () => {
-        try
-        {
-            // Simple pop without animation
-            if (Navigation != null && Navigation.NavigationStack.Count > 1)
-            {
-                await Navigation.PopAsync(false);
-                Debug.WriteLine("Page popped successfully");
             }
-        }
-        catch (Exception navEx)
-        {
-            Debug.WriteLine($"Navigation error: {navEx.Message}");
-            Debug.WriteLine($"Stack trace: {navEx.StackTrace}");
-            
-            // If navigation fails, try to at least clear the page
-            try
-            {
-                // Clear all page resources
-                Content = new Label { Text = "Returning to main page..." };
-                Debug.WriteLine("Content cleared");
-            }
-            catch (Exception clearEx)
-            {
-                Debug.WriteLine($"Clear error: {clearEx.Message}");
-            }
-        }
-    });
-}
-catch (Exception dbEx)
-{
-    Debug.WriteLine($"Error saving to database: {dbEx.Message}");
-    Debug.WriteLine($"Stack trace: {dbEx.StackTrace}");
-    
-    await Microsoft.Maui.ApplicationModel.MainThread.InvokeOnMainThreadAsync(async () => {
-        try
-        {
-            if (ErrorLabel != null)
-                ErrorLabel.Text = "Database error occurred";
-            await DisplayAlert("Warning", $"Error: {dbEx.Message}", "OK");
-        }
-        catch (Exception uiEx)
-        {
-            Debug.WriteLine($"UI error: {uiEx.Message}");
-        }
-    });
-}
-finally
-{
-    _isNavigating = false;
-    _isDownloading = false;
-    Debug.WriteLine("Finally block completed");
-}
-                        } catch (Exception downloadEx) {
-                            Debug.WriteLine($"Error during download: {downloadEx.Message}");
-                            await DisplayAlert("Error", $"Download failed: {downloadEx.Message}", "OK");
-                        }
-                    }
-                } catch (Exception interactEx) {
-                    Debug.WriteLine($"B³¹d interakcji: {interactEx.Message}");
-                    await DisplayAlert("Error", $"Interaction failed: {interactEx.Message}", "OK");
-                }
-                
-                // Zamknij przegl¹darkê
-                await RandomDelay(5000, 10000);
-                Debug.WriteLine("Zamykam przegl¹darkê");
-                driver?.Quit();
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"B³¹d g³ówny: {ex.Message}");
-                Debug.WriteLine($"Stack: {ex.StackTrace}");
 
-                try {
-                    driver?.Quit();
-                } catch {}
-                
-                // Wyœwietl b³¹d na UI jeœli ErrorLabel istnieje w twoim XAML
-                if (ErrorLabel != null) {
-                    ErrorLabel.Text = $"Wyst¹pi³ b³¹d: {ex.Message}";
-                }
-                
-                await DisplayAlert("Error", $"Download failed: {ex.Message}", "OK");
-            }
-            finally
-            {
-                _isDownloading = false;
-            }
+            Debug.WriteLine($"Database integration completed for playlist: {playlistName}");
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Error integrating with database: {ex.Message}");
+            Debug.WriteLine($"Stack trace: {ex.StackTrace}");
+            throw;
         }
     }
-    
-    private async Task SetBraveShield(ChromeDriver driver, bool enable)
+
+    private string? FindPlaylistImage(string playlistPath)
     {
-        try {
-            Debug.WriteLine($"Zmiana ustawieñ tarczy Brave przez CDP...");
+        try
+        {
+            // Look for common image extensions
+            string[] imageExtensions = { ".jpg", ".jpeg", ".png", ".webp", ".gif" };
             
-            // Przygotuj skrypt zmieniaj¹cy ustawienia tarczy
-            string script = @"
-                // Bezpoœredni dostêp do ustawieñ tarczy przez localStorage
-                localStorage.setItem('brave-site-specific-shields', JSON.stringify({
-                    'https://spotdown.app': {
-                        'braveShields': " + (enable ? "'enabled'" : "'disabled'") + @",
-                        'ads': 'block',
-                        'trackers': 'block',
-                        'httpUpgradable': 'block',
-                        'javascript': 'allow',
-                        'fingerprinting': 'block'
-                    }
-                }));
-            ";
-            
-            ((IJavaScriptExecutor)driver).ExecuteScript(script);
-            
-            // Opcjonalnie: prze³aduj stronê aby zmiany zosta³y zastosowane
-            if (driver.Url.Contains("spotdown.app")) {
-                driver.Navigate().Refresh();
-                await RandomDelay(2000, 3000);
+            foreach (var ext in imageExtensions)
+            {
+                var imageFiles = Directory.GetFiles(playlistPath, $"*{ext}");
+                if (imageFiles.Length > 0)
+                {
+                    // Prefer files with "cover" or "playlist" in the name
+                    var preferredImage = imageFiles.FirstOrDefault(f => 
+                        Path.GetFileNameWithoutExtension(f).ToLower().Contains("cover") ||
+                        Path.GetFileNameWithoutExtension(f).ToLower().Contains("playlist") ||
+                        Path.GetFileNameWithoutExtension(f).ToLower().Contains("image"));
+                    
+                    return preferredImage ?? imageFiles[0];
+                }
             }
             
-            Debug.WriteLine($"Ustawienia tarczy zosta³y zmienione na {(enable ? "w³¹czone" : "wy³¹czone")}");
+            return null;
         }
-        catch (Exception ex) {
-            Debug.WriteLine($"B³¹d podczas zmiany ustawieñ tarczy: {ex.Message}");
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Error finding playlist image: {ex.Message}");
+            return null;
         }
+    }
+
+    private string? FindBestMatchingMp3(string[] mp3Files, string title, string artist)
+    {
+        if (mp3Files.Length == 0) return null;
+
+        string cleanTitle = CleanForMatching(title);
+        string cleanArtist = CleanForMatching(artist);
+
+        // Priority 1: Match both title and artist
+        foreach (var file in mp3Files)
+        {
+            string fileName = CleanForMatching(Path.GetFileNameWithoutExtension(file));
+            if (fileName.Contains(cleanTitle) && !string.IsNullOrEmpty(cleanArtist) && fileName.Contains(cleanArtist))
+            {
+                return file;
+            }
+        }
+
+        // Priority 2: Match title only
+        foreach (var file in mp3Files)
+        {
+            string fileName = CleanForMatching(Path.GetFileNameWithoutExtension(file));
+            if (fileName.Contains(cleanTitle))
+            {
+                return file;
+            }
+        }
+
+        // Priority 3: Match artist only (if artist is provided)
+        if (!string.IsNullOrEmpty(cleanArtist))
+        {
+            foreach (var file in mp3Files)
+            {
+                string fileName = CleanForMatching(Path.GetFileNameWithoutExtension(file));
+                if (fileName.Contains(cleanArtist))
+                {
+                    return file;
+                }
+            }
+        }
+
+        // Priority 4: Fuzzy match
+        foreach (var file in mp3Files)
+        {
+            string fileName = CleanForMatching(Path.GetFileNameWithoutExtension(file));
+            if (IsFuzzyMatch(cleanTitle, fileName))
+            {
+                return file;
+            }
+        }
+
+        return null;
+    }
+
+    private string CleanForMatching(string? input)
+    {
+        if (string.IsNullOrEmpty(input))
+            return string.Empty;
+
+        return input.ToLower()
+            .Replace("?", "")
+            .Replace("!", "")
+            .Replace("'", "")
+            .Replace("\"", "")
+            .Replace("(", "")
+            .Replace(")", "")
+            .Replace("[", "")
+            .Replace("]", "")
+            .Replace("__spotdown.app", "")
+            .Replace("-", " ")
+            .Replace("_", " ")
+            .Trim();
+    }
+
+    private bool IsFuzzyMatch(string? trackName, string? fileName)
+    {
+        if (string.IsNullOrEmpty(trackName) || string.IsNullOrEmpty(fileName))
+            return false;
+
+        string trackNoSpaces = trackName.Replace(" ", "");
+        string fileNoSpaces = fileName.Replace(" ", "");
+
+        return fileNoSpaces.Contains(trackNoSpaces) || trackNoSpaces.Contains(fileNoSpaces);
     }
 
     protected override void OnDisappearing()
@@ -644,7 +716,7 @@ finally
         
         Debug.WriteLine($"OnDisappearing called - _isNavigating: {_isNavigating}, _isDisposed: {_isDisposed}");
         
-        // CRITICAL: Don't cleanup during navigation
+        
         if (_isNavigating)
         {
             Debug.WriteLine("Skipping cleanup - navigation in progress");
@@ -692,44 +764,20 @@ finally
         return base.OnBackButtonPressed();
     }
 
-    // Add this method to handle downloading a single song with a timeout
-    private async Task<bool> DownloadSongWithTimeout(Func<Task> downloadTask, int timeoutMs)
+    // Helper classes for JSON deserialization
+    private class ServerResponse
     {
-        using var cts = new CancellationTokenSource(timeoutMs);
-        try
-        {
-            // Start the download task with the cancellation token
-            await Task.Run(async () => await downloadTask(), cts.Token);
-            return true; // Download succeeded
-        }
-        catch (OperationCanceledException)
-        {
-            Debug.WriteLine("Download timed out.");
-            return false; // Download timed out
-        }
-        catch (Exception ex)
-        {
-            Debug.WriteLine($"Error downloading song: {ex.Message}");
-            return false; // Download failed
-        }
+        public string status { get; set; } = "";
+        public string? message { get; set; }
+        public string? filename { get; set; }
+        public long size { get; set; }
     }
 
-    private async void OnUpdateChromeDriverClicked(object sender, EventArgs e)
+    private class DownloadResult
     {
-        try
-        {
-            ErrorLabel.Text = "Updating ChromeDriver...";
-            ErrorLabel.TextColor = Colors.Orange;
-            await ChromeDriverManager.ForceUpdateAsync();
-            ErrorLabel.Text = "ChromeDriver updated successfully!";
-            ErrorLabel.TextColor = Colors.LightGreen;
-        }
-        catch (Exception ex)
-        {
-            ErrorLabel.Text = $"Failed to update ChromeDriver: {ex.Message}";
-            ErrorLabel.TextColor = Colors.Red;
-            Debug.WriteLine($"ChromeDriver update error: {ex}");
-            await DisplayAlert("Error", $"Failed to update ChromeDriver: {ex.Message}", "OK");
-        }
+        public bool Success { get; set; }
+        public byte[]? ZipData { get; set; }
+        public string? FileName { get; set; }
+        public string? ErrorMessage { get; set; }
     }
 }

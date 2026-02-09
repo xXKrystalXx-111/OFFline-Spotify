@@ -120,8 +120,8 @@ namespace OFFline_Spotify
                         Debug.WriteLine($"Set page title to: {this.Title}");
                     }
 
-                    var spotifyService = new SpotifyService(App.Database);
-                    var songs = await spotifyService.GetPlaylistSongsAsync(PlaylistId);
+                    // Get songs directly from database - no SpotifyService needed
+                    var songs = await App.Database.GetSongsByPlaylistIdAsync(PlaylistId);
 
                     Debug.WriteLine($"Loaded {songs.Count} songs");
 
@@ -204,7 +204,6 @@ namespace OFFline_Spotify
                 Debug.WriteLine($"Found {mp3Files.Length} MP3 files in {playlistFolderPath}");
                 
                 int matchedCount = 0;
-                var spotifyService = new SpotifyService(App.Database);
                 
                 foreach (var song in missingSongs)
                 {
@@ -228,14 +227,14 @@ namespace OFFline_Spotify
                     if (matchedFile != null)
                     {
                         song.Mp3FilePath = matchedFile;
-                        await spotifyService.UpdateSongMp3PathAsync(song.Id, matchedFile);
+                        await App.Database.SaveSongAsync(song);
                         matchedCount++;
                         Debug.WriteLine($"Matched song '{song.Title}' to file '{Path.GetFileName(matchedFile)}'");
                     }
                 }
                 
-                // Reload the playlist - changed to update ObservableCollection
-                var updatedSongs = await spotifyService.GetPlaylistSongsAsync(PlaylistId);
+                // Reload the playlist
+                var updatedSongs = await App.Database.GetSongsByPlaylistIdAsync(PlaylistId);
                 _playlist.Clear();
                 foreach (var song in updatedSongs)
                 {
@@ -258,40 +257,7 @@ namespace OFFline_Spotify
             }
         }
 
-        // Add this method after LoadPlaylistSongs
-        private void UpdateSongVisualState()
-        {
-            try
-            {
-                Debug.WriteLine("Updating song visual state");
-
-                // Instead of trying to access template items directly, which isn't reliable in MAUI,
-                // we'll create a new collection with visual indicators
-
-                var songsWithIndicators = _playlist.Select(song =>
-                {
-                    bool hasMp3 = !string.IsNullOrEmpty(song.Mp3FilePath) && File.Exists(song.Mp3FilePath);
-
-                    // Create a modified title with warning indicator for songs without MP3 files
-                    if (!hasMp3)
-                    {
-                        Debug.WriteLine($"Song missing MP3: {song.Title}");
-                    }
-
-                    // We'll let the UI handle this through data binding and a converter
-                    return song;
-                }).ToList();
-
-                // Refresh the ListView
-                SongsListView.ItemsSource = null;
-                SongsListView.ItemsSource = songsWithIndicators;
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"Error updating song visual state: {ex.Message}");
-            }
-        }
-
+        
         private async void SongsListView_ItemTapped(object sender, ItemTappedEventArgs e)
         {
             try
@@ -340,8 +306,7 @@ namespace OFFline_Spotify
                 _currentlyPlayingSong = song;
                 song.IsCurrentlyPlaying = true;
                 
-                // REMOVED: No need to refresh ListView manually
-                // The ObservableCollection and INotifyPropertyChanged will handle it
+                
                 
                 if (string.IsNullOrEmpty(song.Mp3FilePath))
                 {
@@ -655,7 +620,7 @@ namespace OFFline_Spotify
                 foreach (var song in songs)
                 {
                     Debug.WriteLine($"  Song: {song.Title} by {song.Artist}");
-                    Debug.WriteLine($"    ID: {song.Id}, SpotifyId: {song.SpotifyId}");
+                    Debug.WriteLine($"    ID: {song.Id}");
                     Debug.WriteLine($"    MP3 Path: {song.Mp3FilePath ?? "NULL"}");
                     Debug.WriteLine($"    MP3 File Exists: {!string.IsNullOrEmpty(song.Mp3FilePath) && File.Exists(song.Mp3FilePath)}");
                 }

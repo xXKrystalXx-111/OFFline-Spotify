@@ -14,15 +14,7 @@
                     Style="{StaticResource GradientButtonStyle}"
                     Clicked="OnDownloadbuttonnClicked"
                     Margin="20"/>
-
-                <Button
-                    Style="{StaticResource GradientButtonStyle}"
-                    x:Name="spotifyloginbtn"
-                    Text="Copy link"
-                    Clicked="CopyToClipboard"
-                    HorizontalOptions="Fill"
-                    Margin="10"
-                    />
+                
                 <Entry
                     x:Name="PlaylistsLink"
                     Placeholder="Enter playlist link here"
@@ -30,19 +22,7 @@
                     PlaceholderColor="Black"
                     BackgroundColor="White"
                     Margin="0,20,0,0"/>
-                <Entry
-                    x:Name="SpotiAuth"
-                    Placeholder="Enter Spotify authorisation code"
-                    PlaceholderColor="Black"
-                    TextColor="Black"
-                    BackgroundColor="White"
-                    Margin="0,20,0,0"
-                    />
-                <Button
-                    Text="Download/Update ChromeDriver"
-                    Style="{StaticResource GradientButtonStyle}"
-                    Clicked="OnUpdateChromeDriverClicked"
-                    Margin="20"/>
+                
             </VerticalStackLayout>
         </Frame>
         

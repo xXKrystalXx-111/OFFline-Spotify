@@ -23,10 +23,6 @@ namespace OFFline_Spotify
         
         public string? ImagePath { get; set; }
         
-        public string? Description { get; set; }
-        
-        public string? Owner { get; set; }
-        
         public int TotalTracks { get; set; }
         
         public DateTime CreatedAt { get; set; }
@@ -39,13 +35,11 @@ namespace OFFline_Spotify
         public int Id { get; set; }
         
         public int PlaylistId { get; set; }
-        public string? SpotifyId { get; set; }
         public string? Title { get; set; }
         public string? Artist { get; set; }
-        public string? Album { get; set; }
         public string? Mp3FilePath { get; set; }
         public int DurationMs { get; set; }
-        public DateTime CreatedAt { get; set; }  // Add this property
+        public DateTime CreatedAt { get; set; }
         
         private bool _isCurrentlyPlaying;
         
@@ -83,7 +77,6 @@ namespace OFFline_Spotify
         {
             _databasePath = databasePath;
             Debug.WriteLine($"Database constructor called with path: {databasePath}");
-            // No blocking initialization in constructor
         }
 
         public async Task InitializeAsync()
@@ -91,18 +84,15 @@ namespace OFFline_Spotify
             if (_isInitialized) 
                 return;
 
-            // Ensure only one initialization process at a time
             await _initializationSemaphore.WaitAsync();
             
             try
             {
-                // Double-check pattern
                 if (_isInitialized) 
                     return;
 
                 Debug.WriteLine($"Starting database initialization for: {_databasePath}");
                 
-                // Check for file existence and handle corruption
                 if (File.Exists(_databasePath))
                 {
                     Debug.WriteLine("Database file exists, checking integrity");
@@ -110,7 +100,6 @@ namespace OFFline_Spotify
                     try
                     {
                         _database = new SQLiteAsyncConnection(_databasePath, SQLiteOpenFlags.ReadWrite);
-                        // Test the connection with a simple query
                         await _database.ExecuteScalarAsync<int>("SELECT 1");
                         Debug.WriteLine("Existing database verified successfully");
                     }
@@ -124,7 +113,6 @@ namespace OFFline_Spotify
                             _database = null;
                         }
                         
-                        // Delete the corrupt file
                         try 
                         {
                             File.Delete(_databasePath);
@@ -137,13 +125,11 @@ namespace OFFline_Spotify
                     }
                 }
                 
-                // Create a new database if needed
                 if (_database == null)
                 {
                     Debug.WriteLine("Creating new database");
                     _database = new SQLiteAsyncConnection(_databasePath, SQLiteOpenFlags.Create | SQLiteOpenFlags.ReadWrite);
                     
-                    // Create tables
                     await _database.CreateTableAsync<PlaylistEntity>();
                     await _database.CreateTableAsync<SongEntity>();
                     Debug.WriteLine("Database tables created successfully");
@@ -163,10 +149,8 @@ namespace OFFline_Spotify
             }
         }
 
-        // Add a method to check if database is ready
         public bool IsInitialized() => _isInitialized;
 
-        // Ensure all public methods check for initialization
         private async Task EnsureInitialized()
         {
             if (!_isInitialized)
@@ -182,7 +166,6 @@ namespace OFFline_Spotify
             
             playlist.CreatedAt = DateTime.UtcNow;
             
-            // Check if playlist already exists
             var existingPlaylist = await _database!.Table<PlaylistEntity>()
                 .Where(p => p.SpotifyId == playlist.SpotifyId)
                 .FirstOrDefaultAsync();
@@ -196,10 +179,9 @@ namespace OFFline_Spotify
             }
             else
             {
-                // Insert the playlist and get the actual ID
                 await _database!.InsertAsync(playlist);
                 Debug.WriteLine($"Created new playlist with ID: {playlist.Id}");
-                return playlist.Id;  // ✅ SQLite automatically sets the Id property after insert
+                return playlist.Id;
             }
         }
 
@@ -232,18 +214,15 @@ namespace OFFline_Spotify
         {
             await EnsureInitialized();
             
-            // Delete all songs in the playlist first
             await _database!.Table<SongEntity>()
                 .Where(s => s.PlaylistId == playlistId)
                 .DeleteAsync();
             
-            // Delete the playlist
             return await _database!.Table<PlaylistEntity>()
                 .Where(p => p.Id == playlistId)
                 .DeleteAsync();
         }
 
-        // Add this method to Database class after DeletePlaylistAsync
         public async Task DeletePlaylistBySpotifyIdAsync(string? spotifyId)
         {
             if (string.IsNullOrEmpty(spotifyId))
@@ -251,7 +230,6 @@ namespace OFFline_Spotify
                 
             await EnsureInitialized();
             
-            // Find playlist by SpotifyId
             var playlist = await _database!.Table<PlaylistEntity>()
                 .Where(p => p.SpotifyId == spotifyId)
                 .FirstOrDefaultAsync();
@@ -260,12 +238,10 @@ namespace OFFline_Spotify
             {
                 Debug.WriteLine($"Deleting playlist with SpotifyId: {spotifyId}, DbId: {playlist.Id}");
                 
-                // Delete all songs in the playlist first
                 await _database!.Table<SongEntity>()
                     .Where(s => s.PlaylistId == playlist.Id)
                     .DeleteAsync();
                 
-                // Delete the playlist
                 await _database!.Table<PlaylistEntity>()
                     .Where(p => p.Id == playlist.Id)
                     .DeleteAsync();
@@ -281,9 +257,11 @@ namespace OFFline_Spotify
             
             song.CreatedAt = DateTime.UtcNow;
             
-            // Check if song already exists in this playlist
+            // Changed: Now only checks PlaylistId and Title+Artist combination since SpotifyId is removed
             var existingSong = await _database!.Table<SongEntity>()
-                .Where(s => s.PlaylistId == song.PlaylistId && s.SpotifyId == song.SpotifyId)
+                .Where(s => s.PlaylistId == song.PlaylistId && 
+                           s.Title == song.Title && 
+                           s.Artist == song.Artist)
                 .FirstOrDefaultAsync();
             
             if (existingSong != null)
@@ -322,7 +300,6 @@ namespace OFFline_Spotify
                 .DeleteAsync();
         }
 
-        // Batch operations for better performance
         public async Task SaveSongsAsync(List<SongEntity> songs)
         {
             await EnsureInitialized();
@@ -336,69 +313,7 @@ namespace OFFline_Spotify
         }
 
         // Helper method to save complete playlist with songs from SpotifyService
-        public async Task<int> SavePlaylistWithSongsAsync(PlaylistInfo? playlistInfo, string? playlistImagePath, string mp3FolderPath)
-        {
-            if (playlistInfo == null)
-                throw new ArgumentNullException(nameof(playlistInfo));
-                
-            await EnsureInitialized();
-
-            // ✅ DELETE EXISTING PLAYLIST FIRST (if it exists)
-            await DeletePlaylistBySpotifyIdAsync(playlistInfo.Id);
-            Debug.WriteLine($"Deleted any existing playlist with SpotifyId: {playlistInfo.Id}");
-
-            // Create playlist entity
-            var playlistEntity = new PlaylistEntity
-            {
-                SpotifyId = playlistInfo.Id,
-                Name = playlistInfo.Name,
-                ImagePath = playlistImagePath,
-                Description = playlistInfo.Description,
-                Owner = playlistInfo.Owner,
-                TotalTracks = playlistInfo.TotalTracks
-            };
-
-            // Save playlist (will create new since we deleted the old one)
-            var playlistId = await SavePlaylistAsync(playlistEntity);
-            playlistEntity.Id = playlistId;
-            
-            Debug.WriteLine($"Created new playlist with DbId: {playlistId}");
-
-            // Create song entities
-            var songEntities = new List<SongEntity>();
-            foreach (var track in playlistInfo.Tracks)
-            {
-                // Try to find the corresponding MP3 file
-                string? mp3FilePath = FindMp3File(mp3FolderPath, track.Name, track.ArtistsString);
-                
-                Debug.WriteLine($"Track: '{track.Name}' by '{track.ArtistsString}' -> MP3: {mp3FilePath ?? "NOT FOUND"}");
-                
-                var songEntity = new SongEntity
-                {
-                    PlaylistId = playlistId,  // ✅ Now uses the correct new playlist ID
-                    SpotifyId = track.Id,
-                    Title = track.Name,
-                    Artist = track.ArtistsString,
-                    Album = track.Album,
-                    Mp3FilePath = mp3FilePath,
-                    DurationMs = track.DurationMs
-                };
-                
-                songEntities.Add(songEntity);
-            }
-
-            // Save all songs
-            foreach (var song in songEntities)
-            {
-                await SaveSongAsync(song);
-            }
-            
-            Debug.WriteLine($"Saved {songEntities.Count} songs to playlist {playlistId}");
-
-            return playlistId;
-        }
-
-        // Helper method to find MP3 file in the folder
+        
         private string? FindMp3File(string? folderPath, string? trackName, string? artist)
         {
             if (string.IsNullOrEmpty(folderPath) || !Directory.Exists(folderPath))
@@ -513,7 +428,6 @@ namespace OFFline_Spotify
             return fileNoSpaces.Contains(trackNoSpaces) || trackNoSpaces.Contains(fileNoSpaces);
         }
 
-        // Clean up
         public async Task CloseAsync()
         {
             if (_database != null)

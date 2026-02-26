@@ -361,38 +361,7 @@ public partial class Download : ContentPage
             string playlistName = Path.GetFileNameWithoutExtension(zipFilePath);
             Debug.WriteLine($"Playlist name from zip file: {playlistName}");
 
-            // 1. Extract the zip file
-            string extractPath = Path.Combine(Path.GetDirectoryName(zipFilePath)!, playlistName + "_temp");
-            
-            if (Directory.Exists(extractPath))
-            {
-                Directory.Delete(extractPath, true);
-            }
-            
-            await MainThread.InvokeOnMainThreadAsync(() => 
-            {
-                ErrorLabel.Text = "Extracting files...";
-            });
-            
-            ZipFile.ExtractToDirectory(zipFilePath, extractPath);
-            Debug.WriteLine($"Extracted to: {extractPath}");
-
-            // 2. Find the actual playlist folder (first subdirectory)
-            var subdirectories = Directory.GetDirectories(extractPath);
-            if (subdirectories.Length == 0)
-            {
-                Debug.WriteLine("Warning: No playlist folder found in the zip file. Creating empty playlist.");
-                
-                // Create empty playlist folder
-                string emptyPlaylistFolder = Path.Combine(extractPath, playlistName);
-                Directory.CreateDirectory(emptyPlaylistFolder);
-                subdirectories = new[] { emptyPlaylistFolder };
-            }
-            
-            string playlistFolder = subdirectories[0];
-            Debug.WriteLine($"Found playlist folder inside zip: {Path.GetFileName(playlistFolder)}");
-
-            // 3. Move the playlist folder one directory back (to AppDataDirectory) with the zip file name
+            // 1. Extract the zip file directly to the target location
             string targetPlaylistPath = Path.Combine(FileSystem.AppDataDirectory, playlistName);
             
             // If target already exists, delete it
@@ -404,13 +373,14 @@ public partial class Download : ContentPage
             
             await MainThread.InvokeOnMainThreadAsync(() => 
             {
-                ErrorLabel.Text = "Organizing files...";
+                ErrorLabel.Text = "Extracting files...";
             });
             
-            Directory.Move(playlistFolder, targetPlaylistPath);
-            Debug.WriteLine($"Moved playlist to: {targetPlaylistPath}");
+            // Extract directly to target location
+            ZipFile.ExtractToDirectory(zipFilePath, targetPlaylistPath);
+            Debug.WriteLine($"Extracted to: {targetPlaylistPath}");
 
-            // 4. Move all MP3 files from songs folder to playlist root
+            // 2. Move all MP3 files from songs folder to playlist root
             string songsFolder = Path.Combine(targetPlaylistPath, "songs");
             if (Directory.Exists(songsFolder))
             {
@@ -445,7 +415,7 @@ public partial class Download : ContentPage
                 Debug.WriteLine("No songs folder found - playlist may be empty");
             }
 
-            // 5. Integrate with database (using zip file name as playlist name)
+            // 3. Integrate with database (using zip file name as playlist name)
             await MainThread.InvokeOnMainThreadAsync(() => 
             {
                 ErrorLabel.Text = "Integrating with database...";
@@ -453,10 +423,8 @@ public partial class Download : ContentPage
             
             await IntegratePlaylistWithDatabase(targetPlaylistPath, playlistName);
 
-            // 6. Clean up
-            Directory.Delete(extractPath, true);
-            File.Delete(zipFilePath);
-            Debug.WriteLine("Cleanup completed");
+            // 4. Keep the ZIP file (no cleanup)
+            Debug.WriteLine($"ZIP file preserved at: {zipFilePath}");
 
             await MainThread.InvokeOnMainThreadAsync(() => 
             {
@@ -469,6 +437,33 @@ public partial class Download : ContentPage
             Debug.WriteLine($"Error processing playlist: {ex.Message}");
             Debug.WriteLine($"Stack trace: {ex.StackTrace}");
             throw new Exception($"Failed to process playlist: {ex.Message}", ex);
+        }
+    }
+
+    // Helper method to recursively log directory contents
+    private void LogDirectoryContents(string path, string indent)
+    {
+        try
+        {
+            // Log files in current directory
+            var files = Directory.GetFiles(path);
+            foreach (var file in files)
+            {
+                var fileInfo = new FileInfo(file);
+                Debug.WriteLine($"{indent}📄 {Path.GetFileName(file)} ({fileInfo.Length / 1024.0:F2} KB)");
+            }
+
+            // Log subdirectories recursively
+            var directories = Directory.GetDirectories(path);
+            foreach (var directory in directories)
+            {
+                Debug.WriteLine($"{indent}📁 {Path.GetFileName(directory)}/");
+                LogDirectoryContents(directory, indent + "  ");
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"{indent}⚠ Error reading directory: {ex.Message}");
         }
     }
 

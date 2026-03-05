@@ -91,7 +91,7 @@ public partial class Download : ContentPage
         {
             // Update UI
             ErrorLabel.Text = "Connecting to server...";
-            ErrorLabel.TextColor = Colors.Blue;
+            ErrorLabel.TextColor = Colors.White;
             
             // Get playlist link(s) - split by newline if multiple
             string input = PlaylistsLink.Text?.Trim() ?? "";
@@ -173,9 +173,9 @@ public partial class Download : ContentPage
             
             // Read response header (4 bytes = header length)
             byte[] headerLengthBytes = new byte[4];
-            int bytesRead = await stream.ReadAsync(headerLengthBytes, 0, 4);
+            int headerBytesRead = await stream.ReadAsync(headerLengthBytes, 0, 4);
             
-            if (bytesRead != 4)
+            if (headerBytesRead != 4)
             {
                 return new DownloadResult 
                 { 
@@ -192,9 +192,9 @@ public partial class Download : ContentPage
             
             // Read header JSON
             byte[] headerBytes = new byte[headerLength];
-            bytesRead = await ReadExactlyAsync(stream, headerBytes, headerLength);
+            int headerJsonBytesRead = await ReadExactlyAsync(stream, headerBytes, headerLength);
             
-            if (bytesRead != headerLength)
+            if (headerJsonBytesRead != headerLength)
             {
                 return new DownloadResult 
                 { 
@@ -232,26 +232,32 @@ public partial class Download : ContentPage
             
             Debug.WriteLine($"Receiving file: {fileName} ({fileSize / 1024 / 1024:F2} MB)");
             
+            // Change buffer size to something more reasonable
+            const long CHUNK_SIZE = 8192; // 8KB chunks
+            
             byte[] fileData = new byte[fileSize];
             long totalRead = 0;
             int lastProgress = 0;
             
+            byte[] buffer = new byte[CHUNK_SIZE];
+            
             while (totalRead < fileSize)
             {
-                int toRead = (int)Math.Min(BUFFER_SIZE, fileSize - totalRead);
-                bytesRead = await stream.ReadAsync(fileData, (int)totalRead, toRead);
+                int toRead = (int)Math.Min(CHUNK_SIZE, fileSize - totalRead);
+                int chunkBytesRead = await stream.ReadAsync(buffer, 0, toRead);
                 
-                if (bytesRead == 0)
+                if (chunkBytesRead == 0)
                     break;
                 
-                totalRead += bytesRead;
+                Array.Copy(buffer, 0, fileData, totalRead, chunkBytesRead);
+                totalRead += chunkBytesRead;
                 
-                // Update progress every 10%
+                // Update progress
                 int progress = (int)((totalRead * 100) / fileSize);
-                if (progress >= lastProgress + 10)
+                if (progress >= lastProgress + 5) // Update every 5%
                 {
                     lastProgress = progress;
-                    Debug.WriteLine($"Download progress: {progress}%");
+                    Debug.WriteLine($"Download progress: {progress}% ({totalRead}/{fileSize} bytes)");
                     
                     await MainThread.InvokeOnMainThreadAsync(() => 
                     {
@@ -260,7 +266,16 @@ public partial class Download : ContentPage
                 }
             }
             
-            Debug.WriteLine($"Received {totalRead} bytes");
+            Debug.WriteLine($"✓ Received {totalRead} bytes (expected {fileSize})");
+            
+            if (totalRead != fileSize)
+            {
+                return new DownloadResult
+                {
+                    Success = false,
+                    ErrorMessage = $"Incomplete download: received {totalRead}/{fileSize} bytes"
+                };
+            }
             
             return new DownloadResult 
             { 
@@ -311,7 +326,6 @@ public partial class Download : ContentPage
     {
         try
         {
-            // Use app's local data directory (accessible by app, survives app restarts)
             string downloadFolder = Path.Combine(FileSystem.AppDataDirectory, "Downloads");
             Directory.CreateDirectory(downloadFolder);
             
@@ -329,12 +343,23 @@ public partial class Download : ContentPage
             
             await File.WriteAllBytesAsync(filePath, zipData);
             Debug.WriteLine($"File saved: {filePath}");
-            Debug.WriteLine($"AppDataDirectory: {FileSystem.AppDataDirectory}");
+            Debug.WriteLine($"File size: {zipData.Length} bytes");
             
-            await MainThread.InvokeOnMainThreadAsync(() => 
+            // VALIDATE ZIP FILE INTEGRITY
+            try
             {
-                ErrorLabel.Text = $"✓ Saved: {Path.GetFileName(filePath)}";
-            });
+                using (var zip = ZipFile.OpenRead(filePath))
+                {
+                    var entryCount = zip.Entries.Count;
+                    Debug.WriteLine($"✓ ZIP validation passed: {entryCount} entries");
+                }
+            }
+            catch (InvalidDataException ex)
+            {
+                Debug.WriteLine($"✗ ZIP validation failed: {ex.Message}");
+                File.Delete(filePath);
+                throw new Exception("Downloaded ZIP file is corrupted. Please try again.");
+            }
             
             return filePath;
         }
@@ -491,26 +516,27 @@ public partial class Download : ContentPage
                 {
                     if (string.IsNullOrWhiteSpace(line)) continue;
                     
-                    // Parse format: "1. Artist - Title" or "1. Title"
+                    // Parse format: "1. Title - Artist"
                     var match = System.Text.RegularExpressions.Regex.Match(line, @"^(\d+)\.\s+(.+)$");
                     if (match.Success)
                     {
                         int order = int.Parse(match.Groups[1].Value);
                         string titleArtist = match.Groups[2].Value.Trim();
                         
-                        // Split by " - " to separate artist and title
-                        string artist = "";
+                        // Split by " - " to separate title and artist
                         string title = titleArtist;
+                        string artist = "";
                         
                         int dashIndex = titleArtist.IndexOf(" - ");
                         if (dashIndex > 0)
                         {
-                            artist = titleArtist.Substring(0, dashIndex).Trim();
-                            title = titleArtist.Substring(dashIndex + 3).Trim();
+                            // Format is: "Title - Artist"
+                            title = titleArtist.Substring(0, dashIndex).Trim();      // ✅ First part is TITLE
+                            artist = titleArtist.Substring(dashIndex + 3).Trim();   // ✅ Second part is ARTIST
                         }
                         
                         songInfoList.Add((order, title, artist));
-                        Debug.WriteLine($"Parsed: Order={order}, Artist='{artist}', Title='{title}'");
+                        Debug.WriteLine($"Parsed: Order={order}, Title='{title}', Artist='{artist}'");
                     }
                 }
 

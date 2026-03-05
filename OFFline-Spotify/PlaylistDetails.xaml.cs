@@ -10,6 +10,8 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
+using System.Net.Sockets;
+using System.Text;
 
 namespace OFFline_Spotify
 {
@@ -38,11 +40,21 @@ namespace OFFline_Spotify
             LoadPlaylistSongs();
             await DiagnoseSongLoadingIssues();
 
-            // Initialize volume
+            // Initialize volume for both desktop and mobile
             if (Player != null)
             {
-                Player.Volume = 1.0; // Set to maximum volume
-                VolumeSlider.Value = 100; // Set slider to 100%
+                Player.Volume = 1.0;
+                VolumeSlider.Value = 100;
+                
+                // Initialize mobile volume controls if they exist
+                if (VolumeSliderMobile != null)
+                {
+                    VolumeSliderMobile.Value = 100;
+                }
+                if (VolumeLabelMobile != null)
+                {
+                    VolumeLabelMobile.Text = "100%";
+                }
             }
 
             // Auto-play if requested
@@ -561,7 +573,7 @@ namespace OFFline_Spotify
             }
         }
 
-        // Add this method after the other event handlers
+        // Update the VolumeSlider_ValueChanged method to handle both sliders
         private void VolumeSlider_ValueChanged(object sender, ValueChangedEventArgs e)
         {
             try
@@ -572,8 +584,25 @@ namespace OFFline_Spotify
                     double volumeLevel = e.NewValue / 100.0;
                     Player.Volume = volumeLevel;
                     
-                    // Update volume label
-                    VolumeLabel.Text = $"{(int)e.NewValue}%";
+                    // Update both volume labels and sync sliders
+                    string volumeText = $"{(int)e.NewValue}%";
+                    VolumeLabel.Text = volumeText;
+                    
+                    // Update mobile volume label and slider if they exist (Android)
+                    if (VolumeLabelMobile != null)
+                    {
+                        VolumeLabelMobile.Text = volumeText;
+                    }
+                    
+                    // Sync the other slider
+                    if (sender == VolumeSlider && VolumeSliderMobile != null && Math.Abs(VolumeSliderMobile.Value - e.NewValue) > 0.1)
+                    {
+                        VolumeSliderMobile.Value = e.NewValue;
+                    }
+                    else if (sender == VolumeSliderMobile && VolumeSlider != null && Math.Abs(VolumeSlider.Value - e.NewValue) > 0.1)
+                    {
+                        VolumeSlider.Value = e.NewValue;
+                    }
                     
                     Debug.WriteLine($"Volume changed to: {volumeLevel} ({(int)e.NewValue}%)");
                 }
@@ -738,6 +767,458 @@ namespace OFFline_Spotify
             {
                 Debug.WriteLine($"Error deleting playlist files: {ex.Message}");
             }
+        }
+
+        private async void Fix_Download(object sender, EventArgs e)
+        {
+            try
+            {
+                if (App.Database == null)
+                {
+                    await DisplayAlert("Error", "Database not initialized.", "OK");
+                    return;
+                }
+
+                // Get all songs for this playlist
+                var allSongs = await App.Database.GetSongsByPlaylistIdAsync(PlaylistId);
+                
+                // Find songs with missing MP3 files
+                var missingSongs = allSongs
+                    .Where(s => string.IsNullOrEmpty(s.Mp3FilePath) || !File.Exists(s.Mp3FilePath))
+                    .ToList();
+
+                if (missingSongs.Count == 0)
+                {
+                    await DisplayAlert("No Missing Files", "All songs in this playlist have valid audio files!", "OK");
+                    return;
+                }
+
+                bool confirm = await DisplayAlert(
+                    "Fix Download",
+                    $"Found {missingSongs.Count} song(s) with missing audio files. Would you like to download them?",
+                    "Yes", "Cancel");
+
+                if (!confirm) return;
+
+                // Show loading indicator
+                await MainThread.InvokeOnMainThreadAsync(() =>
+                {
+                    // You can add a loading spinner here if you have one
+                });
+
+                // Call the fix download method
+                await FixMissingDownloads(missingSongs);
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Error in Fix_Download: {ex.Message}");
+                await DisplayAlert("Error", $"Failed to fix downloads: {ex.Message}", "OK");
+            }
+        }
+
+        private async Task FixMissingDownloads(List<SongEntity> missingSongs)
+        {
+            try
+            {
+                // Format songs as "title - artist" separated by newlines
+                var songRequests = missingSongs
+                    .Select(s => $"{s.Title} - {s.Artist}")
+                    .ToList();
+
+                string requestData = string.Join("\n", songRequests);
+                
+                Debug.WriteLine($"Sending fix download request for {missingSongs.Count} songs:");
+                Debug.WriteLine(requestData);
+
+                // Send request to Python server (reusing the Download.xaml.cs logic)
+                var result = await SendFixDownloadRequestAsync(requestData);
+
+                if (result.Success)
+                {
+                    // Get playlist info to determine folder path
+                    var playlist = await App.Database!.GetPlaylistByIdAsync(PlaylistId);
+                    if (playlist == null)
+                    {
+                        await DisplayAlert("Error", "Playlist not found.", "OK");
+                        return;
+                    }
+
+                    string folderName = playlist.Name ?? "Unknown";
+                    string sanitizedFolderName = string.Join("_", folderName.Split(Path.GetInvalidFileNameChars()));
+                    string playlistFolderPath = Path.Combine(FileSystem.AppDataDirectory, sanitizedFolderName);
+
+                    // Save the zip file
+                    string zipPath = await SaveFixDownloadZipAsync(result.ZipData, result.FileName);
+                    
+                    // Extract and match files
+                    await ProcessFixDownloadZip(zipPath, playlistFolderPath, missingSongs);
+
+                    // Reload the playlist to show updated songs
+                    LoadPlaylistSongs();
+
+                    await DisplayAlert("Success", 
+                        $"Fixed download completed! Downloaded {missingSongs.Count} song(s).", 
+                        "OK");
+                }
+                else
+                {
+                    await DisplayAlert("Download Failed", result.ErrorMessage, "OK");
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Error in FixMissingDownloads: {ex.Message}");
+                Debug.WriteLine($"Stack trace: {ex.StackTrace}");
+                throw;
+            }
+        }
+
+        private async Task<DownloadResult> SendFixDownloadRequestAsync(string songRequests)
+        {
+            const string SERVER_HOST = "192.168.1.49"; // Use same server as Download.xaml.cs
+            const int SERVER_PORT = 9999;
+            const long BUFFER_SIZE = 3000000000;
+
+            TcpClient? client = null;
+            NetworkStream? stream = null;
+
+            try
+            {
+                // Connect to server
+                client = new TcpClient();
+                await client.ConnectAsync(SERVER_HOST, SERVER_PORT);
+                stream = client.GetStream();
+
+                Debug.WriteLine($"Connected to {SERVER_HOST}:{SERVER_PORT}");
+
+                // Send song requests
+                byte[] sendData = Encoding.UTF8.GetBytes(songRequests);
+                await stream.WriteAsync(sendData, 0, sendData.Length);
+                Debug.WriteLine($"Sent {sendData.Length} bytes to server");
+
+                // Read response header (4 bytes = header length)
+                byte[] headerLengthBytes = new byte[4];
+                int bytesRead = await stream.ReadAsync(headerLengthBytes, 0, 4);
+
+                if (bytesRead != 4)
+                {
+                    return new DownloadResult
+                    {
+                        Success = false,
+                        ErrorMessage = "Failed to read response header"
+                    };
+                }
+
+                int headerLength = BitConverter.ToInt32(headerLengthBytes, 0);
+                if (BitConverter.IsLittleEndian)
+                {
+                    headerLength = System.Net.IPAddress.NetworkToHostOrder(headerLength);
+                }
+
+                // Read header JSON
+                byte[] headerBytes = new byte[headerLength];
+                bytesRead = await ReadExactlyAsync(stream, headerBytes, headerLength);
+
+                if (bytesRead != headerLength)
+                {
+                    return new DownloadResult
+                    {
+                        Success = false,
+                        ErrorMessage = "Failed to read complete header"
+                    };
+                }
+
+                string headerJson = Encoding.UTF8.GetString(headerBytes);
+                Debug.WriteLine($"Received header: {headerJson}");
+
+                var header = System.Text.Json.JsonSerializer.Deserialize<ServerResponse>(headerJson);
+
+                if (header == null || header.status != "success")
+                {
+                    return new DownloadResult
+                    {
+                        Success = false,
+                        ErrorMessage = header?.message ?? "Unknown error"
+                    };
+                }
+
+                // Read file content
+                long fileSize = header.size;
+                string fileName = header.filename ?? "fix_downloads.zip";
+
+                Debug.WriteLine($"Receiving file: {fileName} ({fileSize / 1024 / 1024:F2} MB)");
+
+                byte[] fileData = new byte[fileSize];
+                long totalRead = 0;
+
+                while (totalRead < fileSize)
+                {
+                    int toRead = (int)Math.Min(BUFFER_SIZE, fileSize - totalRead);
+                    bytesRead = await stream.ReadAsync(fileData, (int)totalRead, toRead);
+
+                    if (bytesRead == 0)
+                        break;
+
+                    totalRead += bytesRead;
+                }
+
+                Debug.WriteLine($"Received {totalRead} bytes");
+
+                return new DownloadResult
+                {
+                    Success = true,
+                    ZipData = fileData,
+                    FileName = fileName
+                };
+            }
+            catch (SocketException ex)
+            {
+                Debug.WriteLine($"Socket error: {ex.Message}");
+                return new DownloadResult
+                {
+                    Success = false,
+                    ErrorMessage = $"Connection error: {ex.Message}\nMake sure the server is running on {SERVER_HOST}:{SERVER_PORT}"
+                };
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Error: {ex}");
+                return new DownloadResult
+                {
+                    Success = false,
+                    ErrorMessage = ex.Message
+                };
+            }
+            finally
+            {
+                stream?.Close();
+                client?.Close();
+            }
+        }
+
+        private async Task<int> ReadExactlyAsync(NetworkStream stream, byte[] buffer, int length)
+        {
+            int totalRead = 0;
+            while (totalRead < length)
+            {
+                int bytesRead = await stream.ReadAsync(buffer, totalRead, length - totalRead);
+                if (bytesRead == 0)
+                    break;
+                totalRead += bytesRead;
+            }
+            return totalRead;
+        }
+
+        private async Task<string> SaveFixDownloadZipAsync(byte[] zipData, string fileName)
+        {
+            try
+            {
+                string downloadFolder = Path.Combine(FileSystem.AppDataDirectory, "Downloads");
+                Directory.CreateDirectory(downloadFolder);
+
+                string filePath = Path.Combine(downloadFolder, fileName);
+
+                // Make sure filename is unique
+                int counter = 1;
+                while (File.Exists(filePath))
+                {
+                    string nameWithoutExt = Path.GetFileNameWithoutExtension(fileName);
+                    string extension = Path.GetExtension(fileName);
+                    filePath = Path.Combine(downloadFolder, $"{nameWithoutExt}_{counter}{extension}");
+                    counter++;
+                }
+
+                await File.WriteAllBytesAsync(filePath, zipData);
+                Debug.WriteLine($"Fix download zip saved: {filePath}");
+
+                return filePath;
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Error saving zip file: {ex.Message}");
+                throw;
+            }
+        }
+
+        private async Task ProcessFixDownloadZip(string zipFilePath, string playlistFolderPath, List<SongEntity> missingSongs)
+        {
+            try
+            {
+                // Create temp extraction folder
+                string tempExtractPath = Path.Combine(FileSystem.AppDataDirectory, "temp_fix_download");
+
+                if (Directory.Exists(tempExtractPath))
+                {
+                    Directory.Delete(tempExtractPath, true);
+                }
+
+                Directory.CreateDirectory(tempExtractPath);
+
+                // Extract ZIP
+                System.IO.Compression.ZipFile.ExtractToDirectory(zipFilePath, tempExtractPath);
+                Debug.WriteLine($"Extracted fix download zip to: {tempExtractPath}");
+
+                // Get all MP3 files from extracted content
+                var extractedMp3Files = Directory.GetFiles(tempExtractPath, "*.mp3", SearchOption.AllDirectories);
+                Debug.WriteLine($"Found {extractedMp3Files.Length} MP3 files in extracted content");
+
+                // Ensure playlist folder exists
+                Directory.CreateDirectory(playlistFolderPath);
+
+                int matchedCount = 0;
+
+                // Match and move MP3 files to playlist folder
+                foreach (var song in missingSongs)
+                {
+                    string? matchedFile = FindBestMatchingMp3ForSong(extractedMp3Files, song.Title, song.Artist);
+
+                    if (matchedFile != null)
+                    {
+                        // Generate target file path
+                        string targetFileName = $"{song.Title} - {song.Artist}.mp3";
+                        string sanitizedFileName = string.Join("_", targetFileName.Split(Path.GetInvalidFileNameChars()));
+                        string targetPath = Path.Combine(playlistFolderPath, sanitizedFileName);
+
+                        // Handle duplicates
+                        int counter = 1;
+                        while (File.Exists(targetPath))
+                        {
+                            string nameWithoutExt = Path.GetFileNameWithoutExtension(sanitizedFileName);
+                            targetPath = Path.Combine(playlistFolderPath, $"{nameWithoutExt}_{counter}.mp3");
+                            counter++;
+                        }
+
+                        // Move file
+                        File.Move(matchedFile, targetPath);
+                        Debug.WriteLine($"Moved: {Path.GetFileName(matchedFile)} -> {Path.GetFileName(targetPath)}");
+
+                        // Update database
+                        song.Mp3FilePath = targetPath;
+                        await App.Database!.SaveSongAsync(song);
+                        matchedCount++;
+
+                        Debug.WriteLine($"Updated song '{song.Title}' with MP3 path: {targetPath}");
+                    }
+                    else
+                    {
+                        Debug.WriteLine($"No match found for: {song.Title} - {song.Artist}");
+                    }
+                }
+
+                // Cleanup
+                Directory.Delete(tempExtractPath, true);
+                File.Delete(zipFilePath);
+
+                Debug.WriteLine($"Fix download processing completed. Matched {matchedCount}/{missingSongs.Count} songs");
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Error processing fix download zip: {ex.Message}");
+                Debug.WriteLine($"Stack trace: {ex.StackTrace}");
+                throw;
+            }
+        }
+
+        private string? FindBestMatchingMp3ForSong(string[] mp3Files, string? title, string? artist)
+        {
+            if (mp3Files.Length == 0 || string.IsNullOrEmpty(title))
+                return null;
+
+            string cleanTitle = CleanForMatching(title);
+            string cleanArtist = CleanForMatching(artist ?? "");
+
+            // Priority 1: Match both title and artist
+            foreach (var file in mp3Files)
+            {
+                string fileName = CleanForMatching(Path.GetFileNameWithoutExtension(file));
+                if (fileName.Contains(cleanTitle) && !string.IsNullOrEmpty(cleanArtist) && fileName.Contains(cleanArtist))
+                {
+                    return file;
+                }
+            }
+
+            // Priority 2: Match title only
+            foreach (var file in mp3Files)
+            {
+                string fileName = CleanForMatching(Path.GetFileNameWithoutExtension(file));
+                if (fileName.Contains(cleanTitle))
+                {
+                    return file;
+                }
+            }
+
+            // Priority 3: Match artist only (if artist is provided)
+            if (!string.IsNullOrEmpty(cleanArtist))
+            {
+                foreach (var file in mp3Files)
+                {
+                    string fileName = CleanForMatching(Path.GetFileNameWithoutExtension(file));
+                    if (fileName.Contains(cleanArtist))
+                    {
+                        return file;
+                    }
+                }
+            }
+
+            // Priority 4: Fuzzy match
+            foreach (var file in mp3Files)
+            {
+                string fileName = CleanForMatching(Path.GetFileNameWithoutExtension(file));
+                if (IsFuzzyMatchForSong(cleanTitle, fileName))
+                {
+                    return file;
+                }
+            }
+
+            return null;
+        }
+
+        private string CleanForMatching(string? input)
+        {
+            if (string.IsNullOrEmpty(input))
+                return string.Empty;
+
+            return input.ToLower()
+                .Replace("?", "")
+                .Replace("!", "")
+                .Replace("'", "")
+                .Replace("\"", "")
+                .Replace("(", "")
+                .Replace(")", "")
+                .Replace("[", "")
+                .Replace("]", "")
+                .Replace("__spotdown.app", "")
+                .Replace("-", " ")
+                .Replace("_", " ")
+                .Trim();
+        }
+
+        private bool IsFuzzyMatchForSong(string? trackName, string? fileName)
+        {
+            if (string.IsNullOrEmpty(trackName) || string.IsNullOrEmpty(fileName))
+                return false;
+
+            string trackNoSpaces = trackName.Replace(" ", "");
+            string fileNoSpaces = fileName.Replace(" ", "");
+
+            return fileNoSpaces.Contains(trackNoSpaces) || trackNoSpaces.Contains(fileNoSpaces);
+        }
+
+        // Helper classes for server communication
+        private class ServerResponse
+        {
+            public string status { get; set; } = "";
+            public string? message { get; set; }
+            public string? filename { get; set; }
+            public long size { get; set; }
+        }
+
+        private class DownloadResult
+        {
+            public bool Success { get; set; }
+            public byte[]? ZipData { get; set; }
+            public string? FileName { get; set; }
+            public string? ErrorMessage { get; set; }
         }
     }
 

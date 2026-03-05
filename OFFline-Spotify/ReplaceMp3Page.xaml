@@ -9,90 +9,157 @@
              Shell.TabBarBackgroundColor="#2a2a2a"
              Shell.TabBarForegroundColor="#e3e3e3">
 
+    <ContentPage.Resources>
+        <ResourceDictionary>
+            <!-- Responsive font sizes -->
+            <OnPlatform x:Key="HeaderFontSize" x:TypeArguments="x:Double">
+                <On Platform="Android" Value="16" />
+                <On Platform="iOS" Value="18" />
+                <On Platform="WinUI" Value="18" />
+            </OnPlatform>
+            
+            <OnPlatform x:Key="TitleFontSize" x:TypeArguments="x:Double">
+                <On Platform="Android" Value="14" />
+                <On Platform="iOS" Value="16" />
+                <On Platform="WinUI" Value="16" />
+            </OnPlatform>
+            
+            <OnPlatform x:Key="BodyFontSize" x:TypeArguments="x:Double">
+                <On Platform="Android" Value="12" />
+                <On Platform="iOS" Value="14" />
+                <On Platform="WinUI" Value="14" />
+            </OnPlatform>
+        </ResourceDictionary>
+    </ContentPage.Resources>
+
     <ScrollView>
-        <VerticalStackLayout Spacing="20" Padding="20">
+        <VerticalStackLayout Spacing="16" 
+                            Padding="16"
+                            MaximumWidthRequest="600">
 
             <!-- Song Information -->
-            <Frame BackgroundColor="#2a2a2a" BorderColor="#3a3a3a">
-                <VerticalStackLayout Spacing="10">
+            <Frame BackgroundColor="#2a2a2a" 
+                   BorderColor="#3a3a3a"
+                   CornerRadius="12"
+                   Padding="16"
+                   HasShadow="True">
+                <VerticalStackLayout Spacing="12">
                     <Label Text="Song Information" 
                            FontAttributes="Bold" 
-                           FontSize="18" 
-                           TextColor="#e3e3e3"/>
+                           FontSize="{StaticResource HeaderFontSize}" 
+                           TextColor="#1DB954"/>
 
                     <Label x:Name="SongTitleLabel" 
                            Text="Song Title" 
                            FontAttributes="Bold" 
-                           FontSize="16" 
-                           TextColor="#e3e3e3"/>
+                           FontSize="{StaticResource TitleFontSize}" 
+                           TextColor="#e3e3e3"
+                           LineBreakMode="WordWrap"/>
 
                     <Label x:Name="SongArtistLabel" 
                            Text="Artist" 
-                           FontSize="14" 
-                           TextColor="#b3b3b3"/>
+                           FontSize="{StaticResource BodyFontSize}" 
+                           TextColor="#b3b3b3"
+                           LineBreakMode="WordWrap"/>
+
+                    <BoxView Color="#3a3a3a" 
+                            HeightRequest="1" 
+                            Margin="0,8"/>
 
                     <Label x:Name="CurrentFileLabel" 
                            Text="Current file: No file assigned" 
-                           FontSize="12" 
-                           TextColor="#888888"/>
+                           FontSize="{StaticResource BodyFontSize}" 
+                           TextColor="#888888"
+                           LineBreakMode="WordWrap"/>
                 </VerticalStackLayout>
             </Frame>
 
             <!-- File Selection -->
-            <Frame BackgroundColor="#2a2a2a" BorderColor="#3a3a3a">
+            <Frame BackgroundColor="#2a2a2a" 
+                   BorderColor="#3a3a3a"
+                   CornerRadius="12"
+                   Padding="16"
+                   HasShadow="True">
                 <VerticalStackLayout Spacing="15">
                     <Label Text="Select New MP3 File" 
                            FontAttributes="Bold" 
-                           FontSize="16" 
-                           TextColor="#e3e3e3"/>
+                           FontSize="{StaticResource HeaderFontSize}" 
+                           TextColor="#1DB954"/>
 
                     <Button x:Name="BrowseFileButton"
-                            Text="Browse for MP3 File"
+                            Text="📂 Browse for MP3 File"
                             Style="{StaticResource GradientButtonStyle}"
                             Clicked="BrowseFile_Clicked"
+                            HeightRequest="50"
+                            FontSize="{StaticResource TitleFontSize}"
                             HorizontalOptions="Fill"/>
 
-                    <Label x:Name="SelectedFileLabel" 
-                           Text="No file selected" 
-                           FontSize="12" 
-                           TextColor="#b3b3b3"
-                           IsVisible="False"/>
+                    <Frame BackgroundColor="#1a1a1a"
+                           BorderColor="#3a3a3a"
+                           CornerRadius="8"
+                           Padding="12"
+                           IsVisible="{Binding Source={x:Reference SelectedFileLabel}, Path=IsVisible}">
+                        <Label x:Name="SelectedFileLabel" 
+                               Text="No file selected" 
+                               FontSize="{StaticResource BodyFontSize}" 
+                               TextColor="#1DB954"
+                               LineBreakMode="WordWrap"
+                               IsVisible="False"/>
+                    </Frame>
                 </VerticalStackLayout>
             </Frame>
 
             <!-- Action Buttons -->
-            <VerticalStackLayout Spacing="10">
+            <VerticalStackLayout Spacing="12">
                 <Button x:Name="ReplaceButton"
-                        Text="Replace MP3 File"
+                        Text="✓ Replace MP3 File"
                         Style="{StaticResource GradientButtonStyle}"
                         Clicked="Replace_Clicked"
                         IsEnabled="False"
+                        HeightRequest="50"
+                        FontSize="{StaticResource TitleFontSize}"
                         HorizontalOptions="Fill"/>
 
                 <Button x:Name="RemoveButton"
-                        Text="Remove Current File"
+                        Text="🗑 Remove Current File"
                         BackgroundColor="#d32f2f"
                         TextColor="White"
                         Clicked="Remove_Clicked"
+                        HeightRequest="50"
+                        FontSize="{StaticResource TitleFontSize}"
+                        CornerRadius="8"
                         HorizontalOptions="Fill"/>
 
                 <Button x:Name="CancelButton"
-                        Text="Cancel"
+                        Text="✕ Cancel"
                         BackgroundColor="Transparent"
                         BorderColor="#666666"
-                        BorderWidth="1"
+                        BorderWidth="2"
                         TextColor="#e3e3e3"
                         Clicked="Cancel_Clicked"
+                        HeightRequest="50"
+                        FontSize="{StaticResource TitleFontSize}"
+                        CornerRadius="8"
                         HorizontalOptions="Fill"/>
             </VerticalStackLayout>
 
             <!-- Status Label -->
-            <Label x:Name="StatusLabel" 
-                   Text="" 
-                   FontSize="14" 
-                   TextColor="#4caf50"
-                   HorizontalOptions="Center"
-                   IsVisible="False"/>
+            <Frame BackgroundColor="#2a2a2a"
+                   BorderColor="#3a3a3a"
+                   CornerRadius="12"
+                   Padding="16"
+                   HasShadow="True"
+                   IsVisible="{Binding Source={x:Reference StatusLabel}, Path=IsVisible}">
+                <Label x:Name="StatusLabel" 
+                       Text="" 
+                       FontSize="{StaticResource TitleFontSize}" 
+                       FontAttributes="Bold"
+                       TextColor="#4caf50"
+                       HorizontalOptions="Center"
+                       HorizontalTextAlignment="Center"
+                       LineBreakMode="WordWrap"
+                       IsVisible="False"/>
+            </Frame>
 
         </VerticalStackLayout>
     </ScrollView>

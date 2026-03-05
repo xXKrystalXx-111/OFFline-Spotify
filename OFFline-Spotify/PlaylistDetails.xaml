@@ -7,59 +7,99 @@
     
     <ContentPage.ToolbarItems>
         <ToolbarItem 
-                     IconImageSource="threedots.png"
-                     Order="Primary" 
-                     Priority="0"
-                     Clicked="DeletePlaylist_Clicked" />
+            IconImageSource="fix.png"
+            Order="Primary" 
+            Priority="0"
+            Clicked="Fix_Download" />
+        <ToolbarItem 
+            IconImageSource="threedots.png"
+            Order="Primary" 
+            Priority="1"
+            Clicked="DeletePlaylist_Clicked" />
     </ContentPage.ToolbarItems>
     
     <ContentPage.Resources>
         <ResourceDictionary>
-            <!-- Reference the converter with the correct namespace -->
             <local:Mp3FileExistsConverter x:Key="Mp3FileExistsConverter"/>
             <local:SongBackgroundConverter x:Key="SongBackgroundConverter"/>
+            
+            <!-- Responsive font sizes -->
+            <OnPlatform x:Key="TitleFontSize" x:TypeArguments="x:Double">
+                <On Platform="Android" Value="14" />
+                <On Platform="iOS" Value="16" />
+            </OnPlatform>
+            
+            <OnPlatform x:Key="SubtitleFontSize" x:TypeArguments="x:Double">
+                <On Platform="Android" Value="12" />
+                <On Platform="iOS" Value="14" />
+            </OnPlatform>
+            
+            <OnPlatform x:Key="ButtonSize" x:TypeArguments="x:Double">
+                <On Platform="Android" Value="50" />
+                <On Platform="iOS" Value="60" />
+            </OnPlatform>
         </ResourceDictionary>
     </ContentPage.Resources>
     
-    <Grid RowDefinitions="*,Auto" Padding="8">
+    <Grid RowDefinitions="*,Auto" Padding="0">
         <!-- Song List -->
         <ListView x:Name="SongsListView" 
                   ItemTapped="SongsListView_ItemTapped"
-                  SelectionMode="Single">
+                  SelectionMode="Single"
+                  RowHeight="-1"
+                  HasUnevenRows="True"
+                  SeparatorVisibility="Default"
+                  SeparatorColor="#3a3a3a">
             <ListView.ItemTemplate>
                 <DataTemplate>
                     <ViewCell>
-                        <Grid Padding="10" 
+                        <Grid Padding="12,10" 
                               RowDefinitions="Auto,Auto" 
                               ColumnDefinitions="*,Auto,Auto"
+                              ColumnSpacing="8"
+                              MinimumHeightRequest="60"
                               BackgroundColor="{Binding IsCurrentlyPlaying, Converter={StaticResource SongBackgroundConverter}}">
-                            <StackLayout Grid.Row="0" Grid.Column="0">
+                            
+                            <!-- Song Info -->
+                            <StackLayout Grid.Row="0" 
+                                        Grid.Column="0" 
+                                        Spacing="4"
+                                        VerticalOptions="Center">
                                 <Label Text="{Binding Title}" 
                                        TextColor="{Binding Mp3FilePath, Converter={StaticResource Mp3FileExistsConverter}}"
                                        FontAttributes="Bold"
-                                       FontSize="16" />
-                                <Label Text="{Binding Artist}" FontSize="14" TextColor="Gray" />
+                                       FontSize="{StaticResource TitleFontSize}"
+                                       LineBreakMode="TailTruncation"
+                                       MaxLines="1" />
+                                <Label Text="{Binding Artist}" 
+                                       FontSize="{StaticResource SubtitleFontSize}" 
+                                       TextColor="Gray"
+                                       LineBreakMode="TailTruncation"
+                                       MaxLines="1" />
                             </StackLayout>
                             
                             <!-- Warning icon for missing files -->
-                            <Label Grid.Row="0" Grid.Column="1" 
-                                   Text="{Binding Mp3FilePath, Converter={StaticResource Mp3FileExistsConverter}, ConverterParameter='icon'}"
+                            <Label Grid.Row="0" 
+                                   Grid.Column="1" 
+                                   Text="⚠️"
                                    VerticalOptions="Center"
-                                   FontSize="22"
+                                   FontSize="20"
                                    IsVisible="{Binding Mp3FilePath, Converter={StaticResource Mp3FileExistsConverter}, ConverterParameter='bool-inverted'}"
-                                   Margin="5,0"/>
+                                   Margin="4,0"/>
                             
                             <!-- Clickable ImageButton for editing -->
-                            <ImageButton Grid.Row="0" Grid.Column="2"
+                            <ImageButton Grid.Row="0" 
+                                        Grid.Column="2"
                                         Source="threedots.png"
                                         BackgroundColor="Transparent"
-                                        WidthRequest="40"
-                                        HeightRequest="40"
+                                        WidthRequest="36"
+                                        HeightRequest="36"
                                         VerticalOptions="Center"
                                         HorizontalOptions="Center"
                                         Clicked="EditSong_Clicked"
                                         CommandParameter="{Binding}"
-                                        Aspect="AspectFit"/>
+                                        Aspect="AspectFit"
+                                        Padding="6"/>
                         </Grid>
                     </ViewCell>
                 </DataTemplate>
@@ -71,23 +111,34 @@
                BackgroundColor="#2a2a2a"
                BorderColor="#4a4a4a"
                CornerRadius="10"
-               Padding="15"
-               Margin="8">
-            <Grid RowDefinitions="Auto,Auto,Auto,Auto" ColumnDefinitions="*">
+               Padding="12"
+               Margin="8,4,8,8"
+               HasShadow="True">
+            <Grid RowDefinitions="Auto,Auto,Auto,Auto" 
+                  ColumnDefinitions="*"
+                  RowSpacing="8">
+                
                 <!-- Now Playing Info -->
                 <Label x:Name="NowPlayingLabel" 
                        Grid.Row="0"
                        Text="No song playing" 
                        FontAttributes="Bold"
+                       FontSize="{StaticResource TitleFontSize}"
                        HorizontalTextAlignment="Center"
                        TextColor="White"
-                       Margin="0,0,0,8"/>
+                       LineBreakMode="TailTruncation"
+                       MaxLines="1"
+                       Margin="0,0,0,4"/>
                 
                 <!-- Progress Bar with Time Labels -->
-                <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8" Margin="0,0,0,8">
+                <Grid Grid.Row="1" 
+                      ColumnDefinitions="Auto,*,Auto" 
+                      ColumnSpacing="8" 
+                      Margin="0,0,0,4">
                     <Label x:Name="CurrentTimeLabel" 
                            Grid.Column="0" 
                            Text="0:00" 
+                           FontSize="11"
                            VerticalOptions="Center"
                            TextColor="White"/>
                     
@@ -95,6 +146,9 @@
                             Grid.Column="1"
                             Minimum="0" 
                             Maximum="100"
+                            MinimumTrackColor="#1DB954"
+                            MaximumTrackColor="#666666"
+                            ThumbColor="White"
                             ValueChanged="ProgressSlider_ValueChanged"
                             DragStarted="ProgressSlider_DragStarted"
                             DragCompleted="ProgressSlider_DragCompleted"/>
@@ -102,51 +156,25 @@
                     <Label x:Name="TotalTimeLabel" 
                            Grid.Column="2" 
                            Text="0:00" 
+                           FontSize="11"
                            VerticalOptions="Center"
                            TextColor="White"/>
                 </Grid>
 
-                <!-- Playback Controls and Volume -->
-                <Grid Grid.Row="2" ColumnDefinitions="*,Auto,*" Margin="0,0,0,0">
-                    <!-- Empty space for balance (Bottom Left) -->
-                    <BoxView Grid.Column="0" 
-                             IsVisible="False"/>
+                <!-- Playback Controls -->
+                <Grid Grid.Row="2">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
                     
-                    <!-- Playback Controls (Center) -->
-                    <HorizontalStackLayout Grid.Column="1" 
-                                          HorizontalOptions="Center" 
-                                          Spacing="16" 
-                                          VerticalOptions="Center">
-                        <Button x:Name="PreviousButton" 
-                                Style="{StaticResource GradientButtonStyle}"
-                                Text="˂" 
-                                FontSize="24"
-                                Clicked="Previous_Clicked"
-                                WidthRequest="60"
-                                HeightRequest="50"/>
-                        
-                        <Button x:Name="PlayPauseButton" 
-                                Style="{StaticResource GradientButtonStyle}"
-                                Text="►" 
-                                FontSize="24"
-                                Clicked="PlayPause_Clicked"
-                                WidthRequest="60"
-                                HeightRequest="50"/>
-                        
-                        <Button x:Name="NextButton" 
-                                Style="{StaticResource GradientButtonStyle}"
-                                Text="˃" 
-                                FontSize="24"
-                                Clicked="Next_Clicked"
-                                WidthRequest="60"
-                                HeightRequest="50"/>
-                    </HorizontalStackLayout>
-                    
-                    <!-- Volume Control (Bottom Right) -->
-                    <HorizontalStackLayout Grid.Column="2" 
-                                          HorizontalOptions="End" 
-                                          Spacing="8" 
-                                          VerticalOptions="Center">
+                    <!-- Volume Control (Left side on larger screens, hidden on small) -->
+                    <HorizontalStackLayout Grid.Column="0" 
+                                          HorizontalOptions="Start" 
+                                          Spacing="6" 
+                                          VerticalOptions="Center"
+                                          IsVisible="{OnPlatform Default=True, Android=False}">
                         <Border StrokeThickness="2"
                                 Stroke="LightGray"
                                 StrokeShape="RoundRectangle 5"
@@ -154,10 +182,9 @@
                                 Padding="3"
                                 VerticalOptions="Center">
                             <Image Source="volume.png"
-                                   HeightRequest="15"
-                                   WidthRequest="15"
+                                   HeightRequest="14"
+                                   WidthRequest="14"
                                    VerticalOptions="Center"
-                                   BackgroundColor="LightGrey"
                                    Aspect="AspectFit"/>
                         </Border>
                         
@@ -165,18 +192,93 @@
                                 Minimum="0"
                                 Maximum="100"
                                 Value="100"
-                                WidthRequest="120"
+                                WidthRequest="100"
+                                MinimumTrackColor="#1DB954"
+                                MaximumTrackColor="#666666"
+                                ThumbColor="White"
                                 ValueChanged="VolumeSlider_ValueChanged"
                                 VerticalOptions="Center"/>
                         
                         <Label x:Name="VolumeLabel"
                                Text="100%"
-                               FontSize="12"
+                               FontSize="11"
                                VerticalOptions="Center"
                                TextColor="White"
-                               WidthRequest="40"/>
+                               WidthRequest="38"/>
                     </HorizontalStackLayout>
+                    
+                    <!-- Playback Controls (Center) -->
+                    <HorizontalStackLayout Grid.Column="1" 
+                                          HorizontalOptions="Center" 
+                                          Spacing="12" 
+                                          VerticalOptions="Center">
+                        <Button x:Name="PreviousButton" 
+                                Style="{StaticResource GradientButtonStyle}"
+                                Text="◀" 
+                                FontSize="20"
+                                Clicked="Previous_Clicked"
+                                WidthRequest="{StaticResource ButtonSize}"
+                                HeightRequest="{StaticResource ButtonSize}"/>
+                        
+                        <Button x:Name="PlayPauseButton" 
+                                Style="{StaticResource GradientButtonStyle}"
+                                Text="►" 
+                                FontSize="22"
+                                Clicked="PlayPause_Clicked"
+                                WidthRequest="{StaticResource ButtonSize}"
+                                HeightRequest="{StaticResource ButtonSize}"/>
+                        
+                        <Button x:Name="NextButton" 
+                                Style="{StaticResource GradientButtonStyle}"
+                                Text="▶" 
+                                FontSize="20"
+                                Clicked="Next_Clicked"
+                                WidthRequest="{StaticResource ButtonSize}"
+                                HeightRequest="{StaticResource ButtonSize}"/>
+                    </HorizontalStackLayout>
+                    
+                    <!-- Empty space for balance (Right side) -->
+                    <BoxView Grid.Column="2" IsVisible="False"/>
                 </Grid>
+                
+                <!-- Volume Control for Android (Bottom row) -->
+                <HorizontalStackLayout Grid.Row="3"
+                                      HorizontalOptions="Center"
+                                      Spacing="8"
+                                      VerticalOptions="Center"
+                                      Margin="0,4,0,0"
+                                      IsVisible="{OnPlatform Default=False, Android=True}">
+                    <Border StrokeThickness="2"
+                            Stroke="LightGray"
+                            StrokeShape="RoundRectangle 5"
+                            BackgroundColor="LightGrey"
+                            Padding="3"
+                            VerticalOptions="Center">
+                        <Image Source="volume.png"
+                               HeightRequest="14"
+                               WidthRequest="14"
+                               VerticalOptions="Center"
+                               Aspect="AspectFit"/>
+                    </Border>
+                    
+                    <Slider x:Name="VolumeSliderMobile"
+                            Minimum="0"
+                            Maximum="100"
+                            Value="100"
+                            WidthRequest="200"
+                            MinimumTrackColor="#1DB954"
+                            MaximumTrackColor="#666666"
+                            ThumbColor="White"
+                            ValueChanged="VolumeSlider_ValueChanged"
+                            VerticalOptions="Center"/>
+                    
+                    <Label x:Name="VolumeLabelMobile"
+                           Text="100%"
+                           FontSize="11"
+                           VerticalOptions="Center"
+                           TextColor="White"
+                           WidthRequest="38"/>
+                </HorizontalStackLayout>
 
                 <!-- Hidden MediaElement (no built-in controls) -->
                 <toolkit:MediaElement x:Name="Player"
@@ -188,8 +290,7 @@
                                       Volume="1"
                                       StateChanged="Player_StateChanged"
                                       PositionChanged="Player_PositionChanged"
-                                      MediaEnded="Player_MediaEnded"
-                                      BackgroundColor="#181818"/>
+                                      MediaEnded="Player_MediaEnded"/>
             </Grid>
         </Frame>
     </Grid>

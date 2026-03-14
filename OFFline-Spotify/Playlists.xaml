@@ -7,7 +7,7 @@
     
     <ContentPage.Resources>
         <ResourceDictionary>
-            <!-- Responsive font sizes -->
+            <!-- Responsive sizes that scale down proportionally on mobile -->
             <OnPlatform x:Key="TitleFontSize" x:TypeArguments="x:Double">
                 <On Platform="Android" Value="28" />
                 <On Platform="iOS" Value="32" />
@@ -15,61 +15,76 @@
             </OnPlatform>
             
             <OnPlatform x:Key="PlaylistNameFontSize" x:TypeArguments="x:Double">
-                <On Platform="Android" Value="16" />
+                <On Platform="Android" Value="14" />
                 <On Platform="iOS" Value="18" />
                 <On Platform="WinUI" Value="20" />
             </OnPlatform>
             
-            <!-- Responsive grid span -->
-            <OnPlatform x:Key="GridSpan" x:TypeArguments="x:Int32">
-                <On Platform="Android" Value="1" />
-                <On Platform="iOS" Value="2" />
-                <On Platform="WinUI" Value="2" />
+            <!-- Frame must be tall enough for image + label -->
+            <OnPlatform x:Key="FrameSize" x:TypeArguments="x:Double">
+                <On Platform="Android" Value="300" />
+                <On Platform="iOS" Value="260" />
+                <On Platform="WinUI" Value="450" />
+            </OnPlatform>
+            
+            <OnPlatform x:Key="ImageSize" x:TypeArguments="x:Double">
+                <On Platform="Android" Value="160" />
+                <On Platform="iOS" Value="200" />
+                <On Platform="WinUI" Value="400" />
+            </OnPlatform>
+            
+            <!-- Margin positions button near the bottom-right of the image -->
+            <!-- Top margin = ImageSize - half of button height - a small offset -->
+            <OnPlatform x:Key="PlayButtonMargin" x:TypeArguments="Thickness">
+                <On Platform="Android" Value="0,115,8,0" />
+                <On Platform="iOS" Value="0,148,10,0" />
+                <On Platform="WinUI" Value="0,330,15,0" />
             </OnPlatform>
         </ResourceDictionary>
     </ContentPage.Resources>
     
     <ScrollView>
-        <VerticalStackLayout Spacing="20" Padding="16">
+        <VerticalStackLayout>
             <Label Text="Your's only music"
                    FontSize="{StaticResource TitleFontSize}"
-                   FontAttributes="Bold"
                    HorizontalOptions="Center"
                    TextColor="White"
-                   Margin="0,10,0,20"
-                   LineBreakMode="WordWrap"/>
+                   Margin="{OnPlatform Android='0,10,0,20', iOS='0,10,0,25', WinUI='0,10,0,30'}"/>
             
             <CollectionView ItemsSource="{Binding PlaylistsCollection}"
-                            Margin="0"
-                            SelectionMode="None">
+                            Margin="0">
                 <CollectionView.ItemsLayout>
                     <GridItemsLayout Orientation="Vertical"
                                     Span="{OnPlatform Android=1, iOS=2, WinUI=2}"
-                                    HorizontalItemSpacing="12"
-                                    VerticalItemSpacing="12"/>
+                                    HorizontalItemSpacing="{OnPlatform Android=0, iOS=10, WinUI=10}"
+                                    VerticalItemSpacing="{OnPlatform Android=15, iOS=10, WinUI=10}"/>
                 </CollectionView.ItemsLayout>
                 
                 <CollectionView.ItemTemplate>
                     <DataTemplate>
-                        <Frame CornerRadius="12" 
-                               Padding="8" 
-                               HasShadow="True" 
-                               BackgroundColor="Transparent" 
-                               BorderColor="#e3e3e3"
-                               Margin="4">
-                            <Grid>
-                                <!-- Add hover events to Grid -->
-                                <Grid.GestureRecognizers>
-                                    <PointerGestureRecognizer PointerEntered="OnPlaylistPointerEntered"
-                                                              PointerExited="OnPlaylistPointerExited" />
-                                </Grid.GestureRecognizers>
-                                
-                                <VerticalStackLayout Spacing="8">
-                                    <!-- Playlist Image -->
-                                    <Border StrokeShape="RoundRectangle 12"
-                                           StrokeThickness="0"
-                                           HeightRequest="{OnPlatform Android=180, iOS=200, WinUI=400}"
-                                           Margin="0">
+                        <VerticalStackLayout Padding="{OnPlatform Android='10,5', iOS='10', WinUI='10'}" 
+                                           Spacing="5"
+                                           HorizontalOptions="Center">
+                            <Frame CornerRadius="20" 
+                                   Padding="10" 
+                                   HasShadow="True" 
+                                   HeightRequest="{StaticResource FrameSize}" 
+                                   WidthRequest="{StaticResource FrameSize}" 
+                                   BackgroundColor="Transparent" 
+                                   BorderColor="#e3e3e3"
+                                   IsClippedToBounds="True">
+                                <Grid RowDefinitions="*, Auto">
+                                    <!-- Hover events (works on Windows only) -->
+                                    <Grid.GestureRecognizers>
+                                        <PointerGestureRecognizer PointerEntered="OnPlaylistPointerEntered"
+                                                                  PointerExited="OnPlaylistPointerExited" />
+                                    </Grid.GestureRecognizers>
+                                    
+                                    <!-- Row 0: Image -->
+                                    <Border Grid.Row="0"
+                                            StrokeShape="RoundRectangle 20"
+                                            StrokeThickness="0"
+                                            Margin="2">
                                         <Image Source="{Binding ImagePath}" 
                                                Aspect="AspectFill">
                                             <Image.GestureRecognizers>
@@ -78,55 +93,59 @@
                                             </Image.GestureRecognizers>
                                         </Image>
                                     </Border>
-                                    
-                                    <!-- Playlist Name -->
-                                    <Label Text="{Binding Name}" 
-                                           FontAttributes="Bold"
+
+                                    <!-- Row 1: Playlist Name Label -->
+                                    <Label Grid.Row="1"
+                                           Text="{Binding Name}" 
+                                           FontAttributes="Italic"
                                            FontSize="{StaticResource PlaylistNameFontSize}"
                                            TextColor="White"
                                            HorizontalTextAlignment="Center"
                                            LineBreakMode="TailTruncation"
                                            MaxLines="2"
-                                           Margin="4,0"/>
-                                </VerticalStackLayout>
-                                
-                                <!-- Play Button (On image, mobile-friendly) -->
-                                <Button x:Name="PlayButton"
-                                        Text="►"
-                                        FontSize="{OnPlatform Android=24, iOS=26, WinUI=30}"
-                                        Style="{StaticResource GradientButtonStyle}"
-                                        CornerRadius="{OnPlatform Android=25, iOS=28, WinUI=30}"
-                                        WidthRequest="{OnPlatform Android=50, iOS=56, WinUI=60}"
-                                        HeightRequest="{OnPlatform Android=50, iOS=56, WinUI=60}"
-                                        HorizontalOptions="End"
-                                        VerticalOptions="Start"
-                                        Margin="{OnPlatform Android='0,130,10,0', iOS='0,150,12,0', WinUI='0,330,15,0'}"
-                                        Opacity="{OnPlatform Android=0.9, Default=0}"
-                                        Scale="{OnPlatform Android=1, Default=0.5}"
-                                        Clicked="PlayPlaylist_Clicked"
-                                        CommandParameter="{Binding}"
-                                        IsVisible="{OnPlatform Android=True, Default=False}"
-                                        InputTransparent="False"/>
-                                
-                                <!-- Delete Button (Top Right, always visible on mobile) -->
-                                <ImageButton x:Name="DeleteButton"
-                                            Source="threedots.png"
-                                            BackgroundColor="Red"
-                                            CornerRadius="{OnPlatform Android=15, iOS=18, WinUI=20}"
-                                            WidthRequest="{OnPlatform Android=35, iOS=38, WinUI=40}"
-                                            HeightRequest="{OnPlatform Android=35, iOS=38, WinUI=40}"
+                                           Margin="4,4,4,2"
+                                           VerticalOptions="End"/>
+                                    
+                                    <!-- Play Button - overlays bottom-right corner of image -->
+                                    <Button x:Name="PlayButton"
+                                            Grid.Row="0"
+                                            Text="►"
+                                            FontSize="{OnPlatform Android=24, iOS=26, WinUI=30}"
+                                            Style="{StaticResource GradientButtonStyle}"
+                                            CornerRadius="{OnPlatform Android=25, iOS=28, WinUI=30}"
+                                            WidthRequest="{OnPlatform Android=50, iOS=56, WinUI=60}"
+                                            HeightRequest="{OnPlatform Android=50, iOS=56, WinUI=60}"
                                             HorizontalOptions="End"
-                                            VerticalOptions="Start"
-                                            Margin="8"
-                                            Opacity="{OnPlatform Android=0.9, Default=0}"
-                                            Scale="{OnPlatform Android=1, Default=0.5}"
-                                            Clicked="DeletePlaylist_Clicked"
+                                            VerticalOptions="End"
+                                            Margin="0,0,8,8"
+                                            Opacity="{OnPlatform Android=0.95, iOS=0.95, WinUI=0}"
+                                            Scale="{OnPlatform Android=1, iOS=1, WinUI=0.5}"
+                                            Clicked="PlayPlaylist_Clicked"
                                             CommandParameter="{Binding}"
-                                            IsVisible="{OnPlatform Android=True, Default=False}"
-                                            InputTransparent="False"
-                                            Padding="6"/>
-                            </Grid>
-                        </Frame>
+                                            IsVisible="{OnPlatform Android=True, iOS=True, WinUI=False}"
+                                            InputTransparent="False"/>
+                                    
+                                    <!-- Delete Button - overlays top-right corner of image -->
+                                    <ImageButton x:Name="DeleteButton"
+                                                Grid.Row="0"
+                                                Source="threedots.png"
+                                                BackgroundColor="Red"
+                                                CornerRadius="{OnPlatform Android=15, iOS=18, WinUI=20}"
+                                                WidthRequest="{OnPlatform Android=35, iOS=38, WinUI=40}"
+                                                HeightRequest="{OnPlatform Android=35, iOS=38, WinUI=40}"
+                                                HorizontalOptions="End"
+                                                VerticalOptions="Start"
+                                                Margin="{OnPlatform Android='8', iOS='9', WinUI='10'}"
+                                                Opacity="{OnPlatform Android=0.95, iOS=0.95, WinUI=0}"
+                                                Scale="{OnPlatform Android=1, iOS=1, WinUI=0.5}"
+                                                Clicked="DeletePlaylist_Clicked"
+                                                CommandParameter="{Binding}"
+                                                IsVisible="{OnPlatform Android=True, iOS=True, WinUI=False}"
+                                                InputTransparent="False"
+                                                Padding="6"/>
+                                </Grid>
+                            </Frame>
+                        </VerticalStackLayout>
                     </DataTemplate>
                 </CollectionView.ItemTemplate>
             </CollectionView>

@@ -4,102 +4,83 @@
              x:Class="OFFline_Spotify.Download"
              Title="Download your content here"
              Shell.TitleColor="#e3e3e3">
-    
-    <ContentPage.Resources>
-        <ResourceDictionary>
-            <!-- Responsive font sizes -->
-            <OnPlatform x:Key="TitleFontSize" x:TypeArguments="x:Double">
-                <On Platform="Android" Value="18" />
-                <On Platform="iOS" Value="20" />
-                <On Platform="WinUI" Value="24" />
-            </OnPlatform>
-            
-            <OnPlatform x:Key="BodyFontSize" x:TypeArguments="x:Double">
-                <On Platform="Android" Value="14" />
-                <On Platform="iOS" Value="16" />
-                <On Platform="WinUI" Value="18" />
-            </OnPlatform>
-        </ResourceDictionary>
-    </ContentPage.Resources>
-    
+
     <ScrollView>
-        <VerticalStackLayout Spacing="20" Padding="16">
+        <VerticalStackLayout Spacing="20" Padding="16" MaximumWidthRequest="600" HorizontalOptions="Center">
+
             <Frame BackgroundColor="#2a2a2a"
                    Padding="20"
                    CornerRadius="12"
-                   HasShadow="True"
-                   MaximumWidthRequest="800"
-                   HorizontalOptions="Center">
+                   HasShadow="True">
                 <VerticalStackLayout Spacing="20">
+
                     <!-- Title -->
                     <Label Text="Download Your Playlist"
-                           FontSize="{StaticResource TitleFontSize}"
+                           FontSize="18"
                            FontAttributes="Bold"
                            TextColor="White"
                            HorizontalTextAlignment="Center"
                            Margin="0,0,0,10"/>
-                    
+
                     <!-- Download Button -->
-                    <Button
-                        Text="Click to start downloading process!"
-                        Style="{StaticResource GradientButtonStyle}"
-                        Clicked="OnDownloadbuttonnClicked"
-                        HeightRequest="50"
-                        FontSize="{StaticResource BodyFontSize}"/>
-                    
+                    <Button Text="Click to start downloading process!"
+                            Style="{StaticResource GradientButtonStyle}"
+                            Clicked="OnDownloadbuttonnClicked"
+                            HeightRequest="50"
+                            FontSize="14"/>
+
                     <!-- Playlist Link Entry -->
                     <VerticalStackLayout Spacing="8">
                         <Label Text="Playlist Link"
-                               FontSize="{StaticResource BodyFontSize}"
+                               FontSize="14"
                                TextColor="#b3b3b3"/>
-                        <Entry
-                            x:Name="PlaylistsLink"
-                            Placeholder="Enter playlist link here"
-                            TextColor="Black"
-                            PlaceholderColor="#666666"
-                            BackgroundColor="White"
-                            HeightRequest="50"
-                            FontSize="{StaticResource BodyFontSize}"
-                            VerticalTextAlignment="Center"/>
+                        <Entry x:Name="PlaylistsLink"
+                               Placeholder="Enter playlist link here"
+                               TextColor="Black"
+                               PlaceholderColor="#666666"
+                               BackgroundColor="White"
+                               HeightRequest="50"
+                               FontSize="14"
+                               VerticalTextAlignment="Center"/>
                     </VerticalStackLayout>
-                    
+
                     <!-- Info Text -->
-                    <Border Background="Gray" 
-                            StrokeThickness="1" 
+                    <Border Background="Gray"
+                            StrokeThickness="1"
                             Stroke="DarkGray"
                             StrokeShape="RoundRectangle 8"
                             Padding="12"
                             Margin="0,10,0,0">
-                        <Label TextColor="#b3b3b3" 
-                               FontSize="{OnPlatform Android=12, iOS=13, WinUI=14}"
+                        <Label TextColor="#b3b3b3"
+                               FontSize="12"
                                LineBreakMode="WordWrap">
                             <Label.FormattedText>
                                 <FormattedString>
-                                    <Span Text="💡 Tip: " FontAttributes="Bold" TextColor="#1DB954" />
-                                    <Span Text="Make sure your playlist is public before downloading. Private playlists may require additional authentication." />
+                                    <Span Text="💡 Tip: " FontAttributes="Bold" TextColor="#1DB954"/>
+                                    <Span Text="Make sure your playlist is public before downloading. Private playlists may require additional authentication."/>
                                 </FormattedString>
                             </Label.FormattedText>
                         </Label>
                     </Border>
+
                 </VerticalStackLayout>
             </Frame>
-            
+
             <!-- Error/Status Label -->
-            <Frame BackgroundColor="#2a2a2a"
+            <Frame x:Name="ErrorFrame"
+                   BackgroundColor="#2a2a2a"
                    Padding="15"
                    CornerRadius="12"
                    HasShadow="True"
-                   MaximumWidthRequest="800"
-                   HorizontalOptions="Center"
-                   IsVisible="{Binding Source={x:Reference ErrorLabel}, Path=Text, Converter={StaticResource StringNullOrEmptyBoolConverter}}">
-                <Label
-                    x:Name="ErrorLabel"
-                    Text=""
-                    HorizontalOptions="Center"
-                    HorizontalTextAlignment="Center"
-                    FontSize="{StaticResource BodyFontSize}"
-                    LineBreakMode="WordWrap"/>
+                   IsVisible="False">
+                <Label x:Name="ErrorLabel"
+                       Text=""
+                       HorizontalOptions="Center"
+                       HorizontalTextAlignment="Center"
+                       FontSize="14"
+                       LineBreakMode="WordWrap"/>
             </Frame>
+
         </VerticalStackLayout>
     </ScrollView>
 </ContentPage>

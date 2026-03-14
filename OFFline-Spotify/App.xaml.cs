@@ -26,12 +26,11 @@ namespace OFFline_Spotify
             {
                 InitializeComponent();
                 InitializeDatabase();
-            }catch (Exception ex)
+            }
+            catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"Error initializing App: {ex.Message}");
             }
-
-            // Remove the obsolete MainPage assignment - we're using CreateWindow instead
         }
 
         protected override void OnStart()
@@ -46,6 +45,19 @@ namespace OFFline_Spotify
                 System.Diagnostics.Debug.WriteLine($"Unobserved task exception: {args.Exception}");
                 args.SetObserved();
             };
+        }
+
+        protected override void OnSleep()
+        {
+            // App is going to background
+            Debug.WriteLine("App going to sleep - music should continue");
+            // Don't stop the MediaElement here
+        }
+
+        protected override void OnResume()
+        {
+            // App is coming back to foreground
+            Debug.WriteLine("App resumed from sleep");
         }
 
         private void InitializeDatabase()

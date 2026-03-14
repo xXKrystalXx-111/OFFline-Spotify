@@ -237,8 +237,21 @@
                                 HeightRequest="{StaticResource ButtonSize}"/>
                     </HorizontalStackLayout>
                     
-                    <!-- Empty space for balance (Right side) -->
-                    <BoxView Grid.Column="2" IsVisible="False"/>
+
+                    <!-- Shuffle Button (Newly Added) -->
+                    <ImageButton x:Name="ShuffleButton"
+                        Grid.Column="2"
+                        Source="shuffle.png"
+                        Clicked="Shuffle_Clicked"
+                        WidthRequest="{StaticResource ButtonSize}"
+                        HeightRequest="{StaticResource ButtonSize}"
+                        BackgroundColor="Transparent"
+                        HorizontalOptions="Start"
+                        VerticalOptions="Center"
+                        Margin="16,0,0,0"
+                        ToolTipProperties.Text="Shuffle"/>
+
+                    
                 </Grid>
                 
                 <!-- Volume Control for Android (Bottom row) -->
@@ -287,10 +300,10 @@
                                       IsVisible="False"
                                       ShouldShowPlaybackControls="False"
                                       ShouldAutoPlay="False"
-                                      Volume="1"
+                                      ShouldKeepScreenOn="False"
+                                      MediaEnded="Player_MediaEnded"
                                       StateChanged="Player_StateChanged"
-                                      PositionChanged="Player_PositionChanged"
-                                      MediaEnded="Player_MediaEnded"/>
+                                      PositionChanged="Player_PositionChanged" />
             </Grid>
         </Frame>
     </Grid>

@@ -1,6 +1,5 @@
-﻿using Microsoft.Extensions.Logging;
-using System.Diagnostics;
-using CommunityToolkit.Maui;
+﻿using CommunityToolkit.Maui;
+using Microsoft.Extensions.Logging;
 
 namespace OFFline_Spotify
 {
@@ -19,21 +18,13 @@ namespace OFFline_Spotify
                     fonts.AddFont("OpenSans-Semibold.ttf", "OpenSansSemibold");
                 });
 
-            // Enable extended error logging in debug mode
-#if DEBUG
-            builder.Logging.AddDebug();
-            builder.Services.AddLogging(configure =>
-            {
-                configure.AddDebug();
-                configure.SetMinimumLevel(LogLevel.Trace);
-            });
-            
-            // Add exception handlers
-            AppDomain.CurrentDomain.FirstChanceException += (sender, args) =>
-            {
-                Debug.WriteLine($"First chance exception: {args.Exception.Message}");
-            };
-#endif
+            #if ANDROID
+                builder.Services.AddSingleton<IAudioPlayerService, AudioPlayerServiceImpl>();
+            #endif
+
+            #if DEBUG
+
+            #endif
 
             return builder.Build();
         }

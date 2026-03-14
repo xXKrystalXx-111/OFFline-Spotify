@@ -1,13 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <application
-        android:allowBackup="true"
-        android:supportsRtl="true"
-        android:usesCleartextTraffic="true">
-        
+    <application android:allowBackup="true"
+             android:icon="@mipmap/appicon_round"
+             android:roundIcon="@mipmap/appicon_round"
+             android:supportsRtl="true">
         <service android:name="androidx.media.session.MediaButtonReceiver" android:exported="false" />
         <service
-            android:name=".AudioPlayerService"
+            android:name="offline_spotify.AudioPlayerService"
             android:foregroundServiceType="mediaPlayback"
             android:exported="false" />
     </application>

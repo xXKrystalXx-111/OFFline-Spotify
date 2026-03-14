@@ -28,6 +28,13 @@ namespace OFFline_Spotify
         private bool _isPlaying = false;
         private bool _isTransitioning = false;
         private SongEntity? _currentlyPlayingSong;
+        private bool _expectingAutoPlay = false;
+        private IAudioPlayerService? _audioPlayerService;
+
+        // Shuffle state
+        private bool _isShuffleMode = false;
+        private List<int> _shuffleQueue = new();
+        private int _shuffleQueuePosition = -1;
 
         public PlaylistDetails()
         {
@@ -37,27 +44,19 @@ namespace OFFline_Spotify
         protected override async void OnAppearing()
         {
             base.OnAppearing();
+
+            _audioPlayerService ??= IPlatformApplication.Current?.Services.GetService<IAudioPlayerService>();
+
             LoadPlaylistSongs();
             await DiagnoseSongLoadingIssues();
 
-            // Initialize volume for both desktop and mobile
             if (Player != null)
             {
                 Player.Volume = 1.0;
                 VolumeSlider.Value = 100;
-                
-                // Initialize mobile volume controls if they exist
-                if (VolumeSliderMobile != null)
-                {
-                    VolumeSliderMobile.Value = 100;
-                }
-                if (VolumeLabelMobile != null)
-                {
-                    VolumeLabelMobile.Text = "100%";
-                }
+                VolumeSliderMobile.Value = 100;
             }
 
-            // Auto-play if requested
             if (Autoplay && _playlist.Count > 0)
             {
                 await StartAutoplay();
@@ -111,6 +110,7 @@ namespace OFFline_Spotify
                     Player.Stop();
                     Player.Source = null;
                 }
+                _audioPlayerService?.Stop();
             }
             catch (Exception ex)
             {
@@ -277,6 +277,14 @@ namespace OFFline_Spotify
                 if (e.Item is SongEntity song)
                 {
                     _currentSongIndex = _playlist.IndexOf(song);
+
+                    // Re-anchor shuffle queue at the tapped song
+                    if (_isShuffleMode)
+                    {
+                        BuildShuffleQueue();
+                        _shuffleQueuePosition = 0;
+                    }
+
                     _isPlaying = true;
                     await PlaySongAtIndex(_currentSongIndex);
                     ((ListView)sender).SelectedItem = null;
@@ -304,22 +312,17 @@ namespace OFFline_Spotify
                 if (index < 0 || index >= _playlist.Count)
                 {
                     Debug.WriteLine($"Invalid index: {index}");
-                    _isTransitioning = false;
                     return;
                 }
 
                 var song = _playlist[index];
-                
-                // Update currently playing song - INotifyPropertyChanged will handle UI update
+
                 if (_currentlyPlayingSong != null)
-                {
                     _currentlyPlayingSong.IsCurrentlyPlaying = false;
-                }
+
                 _currentlyPlayingSong = song;
                 song.IsCurrentlyPlaying = true;
-                
-                
-                
+
                 if (string.IsNullOrEmpty(song.Mp3FilePath))
                 {
                     await DisplayAlert("No Audio File", "This song has not been downloaded yet.", "OK");
@@ -340,26 +343,34 @@ namespace OFFline_Spotify
 
                 Player.Stop();
                 await Task.Delay(100);
-                
+
+                // Set flag BEFORE assigning Source so StateChanged sees it immediately
+                _expectingAutoPlay = true;
                 Player.Source = MediaSource.FromFile(song.Mp3FilePath);
                 Player.Play();
-                
+
+                Debug.WriteLine($"AudioPlayerService Start called, service is null: {_audioPlayerService == null}");
+                _audioPlayerService?.Start();
+
                 NowPlayingLabel.Text = $"{song.Title} - {song.Artist}";
                 PlayPauseButton.Text = "‖";
-                
+
                 Debug.WriteLine($"Playing song {index + 1}/{_playlist.Count}: {song.Title} from {song.Mp3FilePath}");
             }
             catch (Exception ex)
             {
                 Debug.WriteLine($"Error playing song: {ex.Message}");
                 await DisplayAlert("Playback Error", ex.Message, "OK");
-                
-                await Task.Delay(500);
+                _expectingAutoPlay = false;
                 _isTransitioning = false;
+                await Task.Delay(500);
                 await PlayNextSong();
+                return;
             }
-    
-            _isTransitioning = false;
+            finally
+            {
+                _isTransitioning = false;
+            }
         }
 
         private async Task PlayNextSong()
@@ -367,22 +378,32 @@ namespace OFFline_Spotify
             if (!_isPlaying || _playlist.Count == 0)
                 return;
 
-            // Move to next song, or loop back to the first song
-            if (_currentSongIndex < _playlist.Count - 1)
+            if (_isShuffleMode)
             {
-                _currentSongIndex++;
+                _shuffleQueuePosition++;
+
+                if (_shuffleQueuePosition >= _shuffleQueue.Count)
+                {
+                    Debug.WriteLine("Shuffle queue exhausted — rebuilding for next cycle");
+                    BuildShuffleQueue();
+                    _shuffleQueuePosition = _shuffleQueue.Count > 1 ? 1 : 0;
+                }
+
+                _currentSongIndex = _shuffleQueue[_shuffleQueuePosition];
+                Debug.WriteLine($"Shuffle: queue pos {_shuffleQueuePosition}, song index {_currentSongIndex}");
             }
             else
             {
-                // Loop back to the beginning of the playlist
-                _currentSongIndex = 0;
+                _currentSongIndex = _currentSongIndex < _playlist.Count - 1
+                    ? _currentSongIndex + 1
+                    : 0;
+
                 Debug.WriteLine("Reached end of playlist - looping back to start");
             }
 
             Debug.WriteLine($"Auto-playing next song at index {_currentSongIndex}");
             await PlaySongAtIndex(_currentSongIndex);
 
-            // Force play state to ensure it starts
             await MainThread.InvokeOnMainThreadAsync(() =>
             {
                 if (_isPlaying && Player.CurrentState != MediaElementState.Playing)
@@ -432,25 +453,27 @@ namespace OFFline_Spotify
 
             _isPlaying = true;
 
-            if (_currentSongIndex > 0)
+            if (_isShuffleMode)
             {
-                _currentSongIndex--;
+                _shuffleQueuePosition = _shuffleQueuePosition > 0
+                    ? _shuffleQueuePosition - 1
+                    : _shuffleQueue.Count - 1;
+
+                _currentSongIndex = _shuffleQueue[_shuffleQueuePosition];
             }
             else
             {
-                // Loop back to last song
-                _currentSongIndex = _playlist.Count - 1;
+                _currentSongIndex = _currentSongIndex > 0
+                    ? _currentSongIndex - 1
+                    : _playlist.Count - 1;
             }
 
             await PlaySongAtIndex(_currentSongIndex);
 
-            // Ensure it's playing
             await MainThread.InvokeOnMainThreadAsync(() =>
             {
                 if (_isPlaying && Player.CurrentState != MediaElementState.Playing)
-                {
                     Player.Play();
-                }
             });
         }
 
@@ -471,14 +494,18 @@ namespace OFFline_Spotify
             {
                 await MainThread.InvokeOnMainThreadAsync(async () =>
                 {
-                    if (!_isPlaying || _playlist.Count == 0)
+                    if (_playlist.Count == 0)
                     {
-                        Debug.WriteLine("Not playing or no songs, skipping auto-play");
+                        Debug.WriteLine("No songs, skipping auto-play");
                         return;
                     }
 
+                    // Force _isPlaying true — MediaElement sets state to Stopped
+                    // when a track ends, which can flip _isPlaying to false via StateChanged
+                    _isPlaying = true;
+
                     Debug.WriteLine("Waiting 200ms before playing next song...");
-                    await Task.Delay(200); // Small delay to ensure clean transition
+                    await Task.Delay(200);
 
                     await PlayNextSong();
                 });
@@ -497,19 +524,23 @@ namespace OFFline_Spotify
 
                 if (e.NewState == MediaElementState.Playing)
                 {
-                    PlayPauseButton.Text = "‖"; // Pause symbol
+                    _expectingAutoPlay = false;
+                    PlayPauseButton.Text = "‖";
                 }
-                else if (e.NewState == MediaElementState.Paused || e.NewState == MediaElementState.Stopped)
+                else if (e.NewState == MediaElementState.Paused)
                 {
-                    PlayPauseButton.Text = "►"; // Play symbol
+                    if (_isPlaying && _expectingAutoPlay)
+                    {
+                        // Windows: MediaElement goes Opening→Paused instead of Opening→Playing
+                        Debug.WriteLine("Auto-resuming play (Windows Opening→Paused behaviour)");
+                        Player.Play();
+                    }
+                    else
+                    {
+                        PlayPauseButton.Text = "►";
+                    }
                 }
-
-                // Handle case where player gets stuck in paused state during auto-play
-                if (_isPlaying && e.NewState == MediaElementState.Paused && !_isTransitioning)
-                {
-                    Debug.WriteLine("Player unexpectedly paused during auto-play, forcing Play");
-                    Player.Play();
-                }
+                // Intentionally ignore Stopped — MediaEnded handles transitions
             });
         }
 
@@ -573,37 +604,28 @@ namespace OFFline_Spotify
             }
         }
 
-        // Update the VolumeSlider_ValueChanged method to handle both sliders
+        // Add this method after the other event handlers
         private void VolumeSlider_ValueChanged(object sender, ValueChangedEventArgs e)
         {
             try
             {
                 if (Player != null)
                 {
-                    // Convert percentage (0-100) to volume (0.0-1.0)
                     double volumeLevel = e.NewValue / 100.0;
                     Player.Volume = volumeLevel;
-                    
-                    // Update both volume labels and sync sliders
+
                     string volumeText = $"{(int)e.NewValue}%";
+
+                    // Update both labels
                     VolumeLabel.Text = volumeText;
-                    
-                    // Update mobile volume label and slider if they exist (Android)
-                    if (VolumeLabelMobile != null)
-                    {
-                        VolumeLabelMobile.Text = volumeText;
-                    }
-                    
-                    // Sync the other slider
-                    if (sender == VolumeSlider && VolumeSliderMobile != null && Math.Abs(VolumeSliderMobile.Value - e.NewValue) > 0.1)
-                    {
+                    VolumeLabelMobile.Text = volumeText;
+
+                    // Sync whichever slider did NOT trigger this event
+                    if (sender == VolumeSlider)
                         VolumeSliderMobile.Value = e.NewValue;
-                    }
-                    else if (sender == VolumeSliderMobile && VolumeSlider != null && Math.Abs(VolumeSlider.Value - e.NewValue) > 0.1)
-                    {
+                    else if (sender == VolumeSliderMobile)
                         VolumeSlider.Value = e.NewValue;
-                    }
-                    
+
                     Debug.WriteLine($"Volume changed to: {volumeLevel} ({(int)e.NewValue}%)");
                 }
             }
@@ -1097,7 +1119,7 @@ namespace OFFline_Spotify
                         await App.Database!.SaveSongAsync(song);
                         matchedCount++;
 
-                        Debug.WriteLine($"Updated song '{song.Title}' with MP3 path: {targetPath}");
+                        Debug.WriteLine($"Updated song '{song.Title}' with MP3 path: {targetFileName}");
                     }
                     else
                     {
@@ -1219,6 +1241,51 @@ namespace OFFline_Spotify
             public byte[]? ZipData { get; set; }
             public string? FileName { get; set; }
             public string? ErrorMessage { get; set; }
+        }
+
+        private void BuildShuffleQueue()
+        {
+            var rng = new Random();
+            var indices = Enumerable.Range(0, _playlist.Count).ToList();
+
+            // Fisher-Yates shuffle
+            for (int i = indices.Count - 1; i > 0; i--)
+            {
+                int j = rng.Next(i + 1);
+                (indices[i], indices[j]) = (indices[j], indices[i]);
+            }
+
+            // Put the currently playing song first so it isn't immediately repeated
+            if (_currentSongIndex >= 0 && indices.Contains(_currentSongIndex))
+            {
+                indices.Remove(_currentSongIndex);
+                indices.Insert(0, _currentSongIndex);
+            }
+
+            _shuffleQueue = indices;
+            _shuffleQueuePosition = 0;
+            Debug.WriteLine($"Shuffle queue built: [{string.Join(", ", _shuffleQueue)}]");
+        }
+
+        private void Shuffle_Clicked(object sender, EventArgs e)
+        {
+            _isShuffleMode = !_isShuffleMode;
+
+            if (_isShuffleMode)
+            {
+                BuildShuffleQueue();
+                ShuffleButton.Source = "shuffle2.png";
+                // Do NOT start playback here — if a song is already transitioning/playing
+                // calling PlaySongAtIndex would Stop() it mid-load
+            }
+            else
+            {
+                _shuffleQueue.Clear();
+                _shuffleQueuePosition = -1;
+                ShuffleButton.Source = "shuffle.png";
+            }
+
+            Debug.WriteLine($"Shuffle mode: {_isShuffleMode}");
         }
     }
 

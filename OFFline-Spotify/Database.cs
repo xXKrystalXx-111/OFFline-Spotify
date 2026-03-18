@@ -63,6 +63,8 @@ namespace OFFline_Spotify
         {
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
         }
+        
+        public string? SpotifyLink { get; set; }
     }
 
     // Database service
@@ -254,26 +256,36 @@ namespace OFFline_Spotify
         public async Task<int> SaveSongAsync(SongEntity song)
         {
             await EnsureInitialized();
-            
+
             song.CreatedAt = DateTime.UtcNow;
-            
-            // Changed: Now only checks PlaylistId and Title+Artist combination since SpotifyId is removed
-            var existingSong = await _database!.Table<SongEntity>()
-                .Where(s => s.PlaylistId == song.PlaylistId && 
-                           s.Title == song.Title && 
-                           s.Artist == song.Artist)
-                .FirstOrDefaultAsync();
-            
+            song.SpotifyLink = string.IsNullOrWhiteSpace(song.SpotifyLink) ? null : song.SpotifyLink.Trim();
+
+            SongEntity? existingSong;
+
+            if (!string.IsNullOrEmpty(song.SpotifyLink))
+            {
+                existingSong = await _database!.Table<SongEntity>()
+                    .Where(s => s.PlaylistId == song.PlaylistId &&
+                                s.SpotifyLink == song.SpotifyLink)
+                    .FirstOrDefaultAsync();
+            }
+            else
+            {
+                existingSong = await _database!.Table<SongEntity>()
+                    .Where(s => s.PlaylistId == song.PlaylistId &&
+                                s.Title == song.Title &&
+                                s.Artist == song.Artist)
+                    .FirstOrDefaultAsync();
+            }
+
             if (existingSong != null)
             {
                 song.Id = existingSong.Id;
                 await _database!.UpdateAsync(song);
                 return song.Id;
             }
-            else
-            {
-                return await _database!.InsertAsync(song);
-            }
+
+            return await _database!.InsertAsync(song);
         }
 
         public async Task<List<SongEntity>> GetSongsByPlaylistIdAsync(int playlistId)

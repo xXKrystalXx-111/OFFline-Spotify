@@ -76,6 +76,7 @@
                                        TextColor="Gray"
                                        LineBreakMode="TailTruncation"
                                        MaxLines="1" />
+                                
                             </StackLayout>
                             
                             <!-- Warning icon for missing files -->

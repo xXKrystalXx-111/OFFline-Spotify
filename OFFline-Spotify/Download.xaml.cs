@@ -419,9 +419,11 @@ public partial class Download : ContentPage
             if (App.Database == null)
                 throw new Exception("Database not initialized");
 
-            string songsDataPath = Path.Combine(playlistPath, "SONGS_DATA.txt");
+            string songsDataPath = Path.Combine(playlistPath, "SONG_DATA.txt");
+            if (!File.Exists(songsDataPath))
+                songsDataPath = Path.Combine(playlistPath, "SONGS_DATA.txt");
             
-            var songInfoList = new List<(int order, string title, string artist)>();
+            var songInfoList = new List<(int order, string title, string artist, string? link)>();
             
             if (File.Exists(songsDataPath))
             {
@@ -431,26 +433,32 @@ public partial class Download : ContentPage
                 foreach (var line in lines)
                 {
                     if (string.IsNullOrWhiteSpace(line)) continue;
-                    
+
                     var match = System.Text.RegularExpressions.Regex.Match(line, @"^(\d+)\.\s+(.+)$");
-                    if (match.Success)
+                    if (!match.Success) continue;
+
+                    int order = int.Parse(match.Groups[1].Value);
+                    string payload = match.Groups[2].Value.Trim();
+
+                    var parts = payload.Split(" - ", StringSplitOptions.TrimEntries);
+                    string title = payload;
+                    string artist = "";
+                    string? link = null;
+
+                    if (parts.Length >= 3)
                     {
-                        int order = int.Parse(match.Groups[1].Value);
-                        string titleArtist = match.Groups[2].Value.Trim();
-                        
-                        string title = titleArtist;
-                        string artist = "";
-                        
-                        int dashIndex = titleArtist.IndexOf(" - ");
-                        if (dashIndex > 0)
-                        {
-                            title = titleArtist.Substring(0, dashIndex).Trim();
-                            artist = titleArtist.Substring(dashIndex + 3).Trim();
-                        }
-                        
-                        songInfoList.Add((order, title, artist));
-                        Debug.WriteLine($"Parsed: Order={order}, Title='{title}', Artist='{artist}'");
+                        title = parts[0];
+                        artist = parts[1];
+                        link = parts[2];
                     }
+                    else if (parts.Length == 2)
+                    {
+                        title = parts[0];
+                        artist = parts[1];
+                    }
+
+                    songInfoList.Add((order, title, artist, link));
+                    Debug.WriteLine($"Parsed: Order={order}, Title='{title}', Artist='{artist}'");
                 }
 
                 songInfoList = songInfoList.OrderBy(s => s.order).ToList();
@@ -496,7 +504,8 @@ public partial class Download : ContentPage
                     Artist = string.IsNullOrEmpty(songInfo.artist) ? "Unknown Artist" : songInfo.artist,
                     Mp3FilePath = mp3Path,
                     DurationMs = 0,
-                    CreatedAt = DateTime.UtcNow
+                    CreatedAt = DateTime.UtcNow,
+                    SpotifyLink = songInfo.link,
                 };
 
                 await App.Database.SaveSongAsync(song);

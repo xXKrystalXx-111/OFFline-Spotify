@@ -5,82 +5,88 @@
              Title="Download your content here"
              Shell.TitleColor="#e3e3e3">
 
-    <ScrollView>
-        <VerticalStackLayout Spacing="20" Padding="16" MaximumWidthRequest="600" HorizontalOptions="Center">
+    <Grid>
+        <!-- Background image -->
+        <Image Source="background.png"
+               Aspect="AspectFill"
+               Opacity="0.35" />
 
-            <Frame BackgroundColor="#2a2a2a"
-                   Padding="20"
-                   CornerRadius="12"
-                   HasShadow="True">
-                <VerticalStackLayout Spacing="20">
+        <!-- Optional dark overlay for readability -->
+        <BoxView Color="#1A1A1A"
+                 Opacity="0.25" />
 
-                    <!-- Title -->
-                    <Label Text="Download Your Playlist"
-                           FontSize="18"
-                           FontAttributes="Bold"
-                           TextColor="White"
-                           HorizontalTextAlignment="Center"
-                           Margin="0,0,0,10"/>
+        <ScrollView>
+            <VerticalStackLayout Spacing="20" Padding="16" MaximumWidthRequest="600" HorizontalOptions="Center">
 
-                    <!-- Download Button -->
-                    <Button Text="Click to start downloading process!"
-                            Style="{StaticResource GradientButtonStyle}"
-                            Clicked="OnDownloadbuttonnClicked"
-                            HeightRequest="50"
-                            FontSize="14"/>
+                <Frame BackgroundColor="#2a2a2a"
+                       Padding="20"
+                       CornerRadius="12"
+                       HasShadow="True">
+                    <VerticalStackLayout Spacing="20">
 
-                    <!-- Playlist Link Entry -->
-                    <VerticalStackLayout Spacing="8">
-                        <Label Text="Playlist Link"
-                               FontSize="14"
-                               TextColor="#b3b3b3"/>
-                        <Entry x:Name="PlaylistsLink"
-                               Placeholder="Enter playlist link here"
-                               TextColor="Black"
-                               PlaceholderColor="#666666"
-                               BackgroundColor="White"
-                               HeightRequest="50"
-                               FontSize="14"
-                               VerticalTextAlignment="Center"/>
+                        <Label Text="Download Your Playlist"
+                               FontSize="18"
+                               FontAttributes="Bold"
+                               TextColor="White"
+                               HorizontalTextAlignment="Center"
+                               Margin="0,0,0,10"/>
+
+                        <Button Text="Click to start downloading process!"
+                                Style="{StaticResource GradientButtonStyle}"
+                                Clicked="OnDownloadbuttonnClicked"
+                                HeightRequest="50"
+                                FontSize="14"/>
+
+                        <VerticalStackLayout Spacing="8">
+                            <Label Text="Playlist Link"
+                                   FontSize="14"
+                                   TextColor="#b3b3b3"/>
+                            <Entry x:Name="PlaylistsLink"
+                                   Placeholder="Enter playlist link here"
+                                   TextColor="Black"
+                                   PlaceholderColor="#666666"
+                                   BackgroundColor="White"
+                                   HeightRequest="50"
+                                   FontSize="14"
+                                   VerticalTextAlignment="Center"/>
+                        </VerticalStackLayout>
+
+                        <Border Background="Gray"
+                                StrokeThickness="1"
+                                Stroke="DarkGray"
+                                StrokeShape="RoundRectangle 8"
+                                Padding="12"
+                                Margin="0,10,0,0">
+                            <Label TextColor="#b3b3b3"
+                                   FontSize="12"
+                                   LineBreakMode="WordWrap">
+                                <Label.FormattedText>
+                                    <FormattedString>
+                                        <Span Text="💡 Tip: " FontAttributes="Bold" TextColor="#1DB954"/>
+                                        <Span Text="Make sure your playlist is public before downloading."/>
+                                    </FormattedString>
+                                </Label.FormattedText>
+                            </Label>
+                        </Border>
+
                     </VerticalStackLayout>
+                </Frame>
 
-                    <!-- Info Text -->
-                    <Border Background="Gray"
-                            StrokeThickness="1"
-                            Stroke="DarkGray"
-                            StrokeShape="RoundRectangle 8"
-                            Padding="12"
-                            Margin="0,10,0,0">
-                        <Label TextColor="#b3b3b3"
-                               FontSize="12"
-                               LineBreakMode="WordWrap">
-                            <Label.FormattedText>
-                                <FormattedString>
-                                    <Span Text="💡 Tip: " FontAttributes="Bold" TextColor="#1DB954"/>
-                                    <Span Text="Make sure your playlist is public before downloading. Private playlists may require additional authentication."/>
-                                </FormattedString>
-                            </Label.FormattedText>
-                        </Label>
-                    </Border>
+                <Frame x:Name="ErrorFrame"
+                       BackgroundColor="#2a2a2a"
+                       Padding="15"
+                       CornerRadius="12"
+                       HasShadow="True"
+                       IsVisible="False">
+                    <Label x:Name="ErrorLabel"
+                           Text=""
+                           HorizontalOptions="Center"
+                           HorizontalTextAlignment="Center"
+                           FontSize="14"
+                           LineBreakMode="WordWrap"/>
+                </Frame>
 
-                </VerticalStackLayout>
-            </Frame>
-
-            <!-- Error/Status Label -->
-            <Frame x:Name="ErrorFrame"
-                   BackgroundColor="#2a2a2a"
-                   Padding="15"
-                   CornerRadius="12"
-                   HasShadow="True"
-                   IsVisible="False">
-                <Label x:Name="ErrorLabel"
-                       Text=""
-                       HorizontalOptions="Center"
-                       HorizontalTextAlignment="Center"
-                       FontSize="14"
-                       LineBreakMode="WordWrap"/>
-            </Frame>
-
-        </VerticalStackLayout>
-    </ScrollView>
+            </VerticalStackLayout>
+        </ScrollView>
+    </Grid>
 </ContentPage>

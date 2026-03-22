@@ -801,40 +801,62 @@ namespace OFFline_Spotify
                     return;
                 }
 
-                // Get all songs for this playlist
-                var allSongs = await App.Database.GetSongsByPlaylistIdAsync(PlaylistId);
-                
-                // Find songs with missing MP3 files
-                var missingSongs = allSongs
-                    .Where(s => string.IsNullOrEmpty(s.Mp3FilePath) || !File.Exists(s.Mp3FilePath))
-                    .ToList();
-
-                if (missingSongs.Count == 0)
+                var playlist = await App.Database.GetPlaylistByIdAsync(PlaylistId);
+                if (playlist == null)
                 {
-                    await DisplayAlert("No Missing Files", "All songs in this playlist have valid audio files!", "OK");
+                    await DisplayAlert("Error", "Playlist not found.", "OK");
                     return;
                 }
 
-                bool confirm = await DisplayAlert(
-                    "Fix Download",
-                    $"Found {missingSongs.Count} song(s) with missing audio files. Would you like to download them?",
-                    "Yes", "Cancel");
+                string action = await DisplayActionSheet(
+                    "Fix Mode",
+                    "Cancel",
+                    null,
+                    "Download missing MP3 files",
+                    "Update playlist");
 
-                if (!confirm) return;
-
-                // Show loading indicator
-                await MainThread.InvokeOnMainThreadAsync(() =>
+                if (action == "Download missing MP3 files")
                 {
-                    // You can add a loading spinner here if you have one
-                });
+                    bool confirmMissing = await DisplayAlert(
+                        "Confirm",
+                        "Download songs that are currently missing audio files?",
+                        "Yes",
+                        "No");
 
-                // Call the fix download method
-                await FixMissingDownloads(missingSongs);
+                    if (!confirmMissing)
+                        return;
+
+                    var allSongs = await App.Database.GetSongsByPlaylistIdAsync(PlaylistId);
+                    var missingSongs = allSongs
+                        .Where(s => string.IsNullOrEmpty(s.Mp3FilePath) || !File.Exists(s.Mp3FilePath))
+                        .ToList();
+
+                    if (missingSongs.Count == 0)
+                    {
+                        await DisplayAlert("No Missing Files", "All songs in this playlist have valid audio files.", "OK");
+                        return;
+                    }
+
+                    await FixMissingDownloads(missingSongs);
+                }
+                else if (action == "Update playlist (-u)")
+                {
+                    bool confirmUpdate = await DisplayAlert(
+                        "Confirm",
+                        "Update playlist data from server now?",
+                        "Yes",
+                        "No");
+
+                    if (!confirmUpdate)
+                        return;
+
+                    await UpdatePlaylistFromServerAsync(playlist);
+                }
             }
             catch (Exception ex)
             {
                 Debug.WriteLine($"Error in Fix_Download: {ex.Message}");
-                await DisplayAlert("Error", $"Failed to fix downloads: {ex.Message}", "OK");
+                await DisplayAlert("Error", $"Failed to run fix mode: {ex.Message}", "OK");
             }
         }
 
@@ -842,22 +864,26 @@ namespace OFFline_Spotify
         {
             try
             {
-                // Format songs as "title - artist" separated by newlines
+                // Send ONLY raw Spotify links, one per line
                 var songRequests = missingSongs
-                    .Select(s => $"{s.Title} - {s.Artist}")
+                    .Where(s => !string.IsNullOrWhiteSpace(s.SpotifyLink))
+                    .Select(s => s.SpotifyLink!.Trim())
                     .ToList();
 
+                if (songRequests.Count == 0)
+                {
+                    await DisplayAlert("No Links", "No Spotify links found for missing songs.", "OK");
+                    return;
+                }
+
                 string requestData = string.Join("\n", songRequests);
-                
-                Debug.WriteLine($"Sending fix download request for {missingSongs.Count} songs:");
+                Debug.WriteLine($"Sending fix download request for {songRequests.Count} links:");
                 Debug.WriteLine(requestData);
 
-                // Send request to Python server (reusing the Download.xaml.cs logic)
                 var result = await SendFixDownloadRequestAsync(requestData);
 
                 if (result.Success)
                 {
-                    // Get playlist info to determine folder path
                     var playlist = await App.Database!.GetPlaylistByIdAsync(PlaylistId);
                     if (playlist == null)
                     {
@@ -869,17 +895,13 @@ namespace OFFline_Spotify
                     string sanitizedFolderName = string.Join("_", folderName.Split(Path.GetInvalidFileNameChars()));
                     string playlistFolderPath = Path.Combine(FileSystem.AppDataDirectory, sanitizedFolderName);
 
-                    // Save the zip file
                     string zipPath = await SaveFixDownloadZipAsync(result.ZipData, result.FileName);
-                    
-                    // Extract and match files
                     await ProcessFixDownloadZip(zipPath, playlistFolderPath, missingSongs);
 
-                    // Reload the playlist to show updated songs
                     LoadPlaylistSongs();
 
-                    await DisplayAlert("Success", 
-                        $"Fixed download completed! Downloaded {missingSongs.Count} song(s).", 
+                    await DisplayAlert("Success",
+                        $"Fixed download completed! Downloaded {missingSongs.Count} song(s).",
                         "OK");
                 }
                 else
@@ -1130,6 +1152,7 @@ namespace OFFline_Spotify
                 // Cleanup
                 Directory.Delete(tempExtractPath, true);
                 File.Delete(zipFilePath);
+                ClearDownloadsFolder();
 
                 Debug.WriteLine($"Fix download processing completed. Matched {matchedCount}/{missingSongs.Count} songs");
             }
@@ -1194,7 +1217,104 @@ namespace OFFline_Spotify
 
             return null;
         }
+        private async Task ApplyPlaylistUpdateFromTextAsync(byte[] textData, PlaylistEntity playlist, string? fileName)
+        {
+            if (App.Database == null)
+                return;
 
+            string folderName = playlist.Name ?? "Unknown";
+            string sanitizedFolderName = string.Join("_", folderName.Split(Path.GetInvalidFileNameChars()));
+            string playlistFolderPath = Path.Combine(FileSystem.AppDataDirectory, sanitizedFolderName);
+            Directory.CreateDirectory(playlistFolderPath);
+
+            // Save raw server file for diagnostics + canonical SONG_DATA.txt
+            string rawName = string.IsNullOrWhiteSpace(fileName) ? "playlist_update.txtx" : fileName;
+            string rawPath = Path.Combine(playlistFolderPath, rawName);
+            await File.WriteAllBytesAsync(rawPath, textData);
+
+            string canonicalSongDataPath = Path.Combine(playlistFolderPath, "SONG_DATA.txt");
+            await File.WriteAllBytesAsync(canonicalSongDataPath, textData);
+
+            string content = Encoding.UTF8.GetString(textData);
+            var lines = content
+                .Split(new[] { "\r\n", "\n" }, StringSplitOptions.None)
+                .Where(l => !string.IsNullOrWhiteSpace(l))
+                .ToList();
+
+            var parsedSongs = new List<(int order, string title, string artist, string? link)>();
+
+            for (int i = 0; i < lines.Count; i++)
+            {
+                string line = lines[i].Trim();
+
+                int order = i + 1;
+                string payload = line;
+
+                // Accept optional "1. " prefix
+                var match = System.Text.RegularExpressions.Regex.Match(line, @"^(\d+)\.\s+(.+)$");
+                if (match.Success)
+                {
+                    order = int.Parse(match.Groups[1].Value);
+                    payload = match.Groups[2].Value.Trim();
+                }
+
+                // Expected: title - artist -link  (title may contain " - ")
+                var parts = payload.Split(" - ", StringSplitOptions.TrimEntries);
+                string title = payload;
+                string artist = "";
+                string? link = null;
+
+                if (parts.Length >= 3)
+                {
+                    link = parts[^1];
+                    artist = parts[^2];
+                    title = string.Join(" - ", parts.Take(parts.Length - 2));
+                }
+                else if (parts.Length == 2)
+                {
+                    title = parts[0];
+                    artist = parts[1];
+                }
+
+                parsedSongs.Add((order, title, artist, link));
+            }
+
+            parsedSongs = parsedSongs.OrderBy(x => x.order).ToList();
+
+            if (parsedSongs.Count == 0)
+            {
+                await DisplayAlert("Update Failed", "Update file is empty or invalid.", "OK");
+                return;
+            }
+
+            // Rebuild songs in DB
+            var existingSongs = await App.Database.GetSongsByPlaylistIdAsync(PlaylistId);
+            foreach (var oldSong in existingSongs)
+                await App.Database.DeleteSongAsync(oldSong.Id);
+
+            var playlistMp3Files = Directory.GetFiles(playlistFolderPath, "*.mp3", SearchOption.AllDirectories);
+
+            foreach (var item in parsedSongs)
+            {
+                string? matchedMp3 = FindBestMatchingMp3ForSong(playlistMp3Files, item.title, item.artist);
+
+                var newSong = new SongEntity
+                {
+                    PlaylistId = PlaylistId,
+                    Title = item.title,
+                    Artist = string.IsNullOrWhiteSpace(item.artist) ? "Unknown Artist" : item.artist,
+                    SpotifyLink = item.link,
+                    Mp3FilePath = matchedMp3,
+                    DurationMs = 0,
+                    CreatedAt = DateTime.UtcNow
+                };
+
+                await App.Database.SaveSongAsync(newSong);
+            }
+
+            playlist.TotalTracks = parsedSongs.Count;
+            await App.Database.SavePlaylistAsync(playlist);
+        }
         private string CleanForMatching(string? input)
         {
             if (string.IsNullOrEmpty(input))
@@ -1286,6 +1406,218 @@ namespace OFFline_Spotify
             }
 
             Debug.WriteLine($"Shuffle mode: {_isShuffleMode}");
+        }
+
+        private async Task UpdatePlaylistFromServerAsync(PlaylistEntity playlist)
+        {
+            if (App.Database == null)
+                return;
+
+            if (string.IsNullOrWhiteSpace(playlist.SpotifyId) ||
+                playlist.SpotifyId.StartsWith("downloaded_", StringComparison.OrdinalIgnoreCase))
+            {
+                await DisplayAlert("No Spotify ID",
+                    "This playlist has no real Spotify ID, so update mode cannot run.",
+                    "OK");
+                return;
+            }
+
+            // Server expects -u at the end
+            string playlistLink = $"https://open.spotify.com/playlist/{playlist.SpotifyId}";
+            string requestData = $"{playlistLink} -u";
+
+            Debug.WriteLine($"Sending update request: {requestData}");
+
+            var result = await SendFixDownloadRequestAsync(requestData);
+            if (!result.Success)
+            {
+                await DisplayAlert("Update Failed", result.ErrorMessage, "OK");
+                return;
+            }
+
+            if (result.ZipData == null || result.ZipData.Length == 0)
+            {
+                await DisplayAlert("Update Failed", "Server returned empty update file.", "OK");
+                return;
+            }
+
+            await ApplyPlaylistUpdateFromTextAsync(result.ZipData, playlist, result.FileName);
+
+            LoadPlaylistSongs();
+            await DisplayAlert("Success", "Playlist update completed and database refreshed.", "OK");
+        }
+        private void ClearDownloadsFolder()
+        {
+            try
+            {
+                string downloadFolder = Path.Combine(FileSystem.AppDataDirectory, "Downloads");
+                if (!Directory.Exists(downloadFolder))
+                    return;
+
+                foreach (var file in Directory.GetFiles(downloadFolder))
+                {
+                    try { File.Delete(file); }
+                    catch (Exception ex) { Debug.WriteLine($"Failed deleting file '{file}': {ex.Message}"); }
+                }
+
+                foreach (var dir in Directory.GetDirectories(downloadFolder))
+                {
+                    try { Directory.Delete(dir, true); }
+                    catch (Exception ex) { Debug.WriteLine($"Failed deleting directory '{dir}': {ex.Message}"); }
+                }
+
+                Debug.WriteLine("Downloads folder cleared (fix mode).");
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Error clearing Downloads folder (fix mode): {ex.Message}");
+            }
+        }
+
+        private async Task ApplyPlaylistUpdateFromZipAsync(string zipFilePath, PlaylistEntity playlist)
+        {
+            if (App.Database == null)
+                return;
+
+            string tempExtractPath = Path.Combine(FileSystem.AppDataDirectory, "temp_playlist_update");
+            string folderName = playlist.Name ?? "Unknown";
+            string sanitizedFolderName = string.Join("_", folderName.Split(Path.GetInvalidFileNameChars()));
+            string playlistFolderPath = Path.Combine(FileSystem.AppDataDirectory, sanitizedFolderName);
+
+            try
+            {
+                if (Directory.Exists(tempExtractPath))
+                    Directory.Delete(tempExtractPath, true);
+
+                Directory.CreateDirectory(tempExtractPath);
+                System.IO.Compression.ZipFile.ExtractToDirectory(zipFilePath, tempExtractPath);
+
+                // Move all mp3 from update package into playlist folder
+                Directory.CreateDirectory(playlistFolderPath);
+                var extractedMp3Files = Directory.GetFiles(tempExtractPath, "*.mp3", SearchOption.AllDirectories);
+
+                foreach (var sourcePath in extractedMp3Files)
+                {
+                    string fileName = Path.GetFileName(sourcePath);
+                    string targetPath = Path.Combine(playlistFolderPath, fileName);
+
+                    int counter = 1;
+                    while (File.Exists(targetPath))
+                    {
+                        string nameWithoutExt = Path.GetFileNameWithoutExtension(fileName);
+                        string extension = Path.GetExtension(fileName);
+                        targetPath = Path.Combine(playlistFolderPath, $"{nameWithoutExt}_{counter}{extension}");
+                        counter++;
+                    }
+
+                    File.Move(sourcePath, targetPath);
+                }
+
+                // Parse SONG_DATA.txt / SONGS_DATA.txt (search recursively)
+                string? songDataPath = Directory
+                    .GetFiles(tempExtractPath, "SONG_DATA.txt", SearchOption.AllDirectories)
+                    .FirstOrDefault();
+
+                if (songDataPath == null)
+                {
+                    songDataPath = Directory
+                        .GetFiles(tempExtractPath, "SONGS_DATA.txt", SearchOption.AllDirectories)
+                        .FirstOrDefault();
+                }
+
+                if (songDataPath == null)
+                {
+                    await DisplayAlert("Update Failed", "Updated SONG_DATA file not found in ZIP.", "OK");
+                    return;
+                }
+
+                // keep updated txt in playlist folder
+                string targetSongDataPath = Path.Combine(playlistFolderPath, "SONG_DATA.txt");
+                File.Copy(songDataPath, targetSongDataPath, true);
+
+                var parsedSongs = new List<(int order, string title, string artist, string? link)>();
+                var lines = await File.ReadAllLinesAsync(songDataPath);
+
+                foreach (var line in lines)
+                {
+                    if (string.IsNullOrWhiteSpace(line))
+                        continue;
+
+                    var match = System.Text.RegularExpressions.Regex.Match(line, @"^(\d+)\.\s+(.+)$");
+                    if (!match.Success)
+                        continue;
+
+                    int order = int.Parse(match.Groups[1].Value);
+                    string payload = match.Groups[2].Value.Trim();
+
+                    var parts = payload.Split(" - ", StringSplitOptions.TrimEntries);
+                    string title = payload;
+                    string artist = "";
+                    string? link = null;
+
+                    if (parts.Length >= 3)
+                    {
+                        title = parts[0];
+                        artist = parts[1];
+                        link = parts[2];
+                    }
+                    else if (parts.Length == 2)
+                    {
+                        title = parts[0];
+                        artist = parts[1];
+                    }
+
+                    parsedSongs.Add((order, title, artist, link));
+                }
+
+                parsedSongs = parsedSongs.OrderBy(x => x.order).ToList();
+
+                if (parsedSongs.Count == 0)
+                {
+                    await DisplayAlert("Update Failed", "Updated SONG_DATA is empty/invalid. Existing DB songs were kept.", "OK");
+                    return;
+                }
+
+                // Rebuild only after successful parse
+                var existingSongs = await App.Database.GetSongsByPlaylistIdAsync(PlaylistId);
+                foreach (var oldSong in existingSongs)
+                {
+                    await App.Database.DeleteSongAsync(oldSong.Id);
+                }
+
+                var playlistMp3Files = Directory.GetFiles(playlistFolderPath, "*.mp3", SearchOption.AllDirectories);
+
+                foreach (var item in parsedSongs)
+                {
+                    string? matchedMp3 = FindBestMatchingMp3ForSong(playlistMp3Files, item.title, item.artist);
+
+                    var newSong = new SongEntity
+                    {
+                        PlaylistId = PlaylistId,
+                        Title = item.title,
+                        Artist = string.IsNullOrWhiteSpace(item.artist) ? "Unknown Artist" : item.artist,
+                        SpotifyLink = item.link,
+                        Mp3FilePath = matchedMp3,
+                        DurationMs = 0,
+                        CreatedAt = DateTime.UtcNow
+                    };
+
+                    await App.Database.SaveSongAsync(newSong);
+                }
+
+                playlist.TotalTracks = parsedSongs.Count;
+                await App.Database.SavePlaylistAsync(playlist);
+            }
+            finally
+            {
+                if (Directory.Exists(tempExtractPath))
+                    Directory.Delete(tempExtractPath, true);
+
+                if (File.Exists(zipFilePath))
+                    File.Delete(zipFilePath);
+
+                ClearDownloadsFolder();
+            }
         }
     }
 

@@ -85,37 +85,42 @@ public partial class Download : ContentPage
     public async Task OnDownload()
     {
         _isDownloading = true;
-        
+
         try
         {
             SetStatus("Connecting to server...", Colors.White);
-            
+
             string input = PlaylistsLink.Text?.Trim() ?? "";
             List<string> links = input.Split('\n')
                 .Select(l => l.Trim())
                 .Where(l => !string.IsNullOrWhiteSpace(l))
                 .ToList();
-            
+
             if (links.Count == 0)
             {
                 await DisplayAlert("Error", "No valid playlist links found.", "OK");
                 return;
             }
-            
+
+            // NEW: extract Spotify playlist id from first entered link
+            string? spotifyPlaylistId = ExtractSpotifyPlaylistId(links[0]);
+
             SetStatus($"Downloading {links.Count} playlist(s)...", Colors.White);
             var result = await SendDownloadRequestAsync(links);
-            
+
             if (result.Success)
             {
                 SetStatus("Download completed! Saving file...", Colors.Green);
-                
-                string zipPath = await SaveZipFileAsync(result.ZipData, result.FileName);
-                await ProcessDownloadedPlaylist(zipPath);
-                
-                await DisplayAlert("Success", 
-                    $"Download and processing completed!\nFile: {result.FileName}\nSize: {result.ZipData.Length / 1024 / 1024:F2} MB", 
+
+                string safeFileName = string.IsNullOrWhiteSpace(result.FileName) ? "downloads.zip" : result.FileName;
+                string zipPath = await SaveZipFileAsync(result.ZipData!, safeFileName);
+
+                await ProcessDownloadedPlaylist(zipPath, spotifyPlaylistId);
+
+                await DisplayAlert("Success",
+                    $"Download and processing completed!\nFile: {safeFileName}\nSize: {result.ZipData!.Length / 1024 / 1024:F2} MB",
                     "OK");
-                
+
                 SetStatus("✓ Download and processing completed successfully!", Colors.Green);
             }
             else
@@ -136,101 +141,125 @@ public partial class Download : ContentPage
         }
     }
 
+    // NEW
+    private static string? ExtractSpotifyPlaylistId(string? link)
+    {
+        if (string.IsNullOrWhiteSpace(link))
+            return null;
+
+        const string marker = "playlist/";
+        int startIndex = link.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+        if (startIndex < 0)
+            return null;
+
+        startIndex += marker.Length;
+        if (startIndex >= link.Length)
+            return null;
+
+        int questionMarkIndex = link.IndexOf('?', startIndex);
+        string id = questionMarkIndex >= 0
+            ? link[startIndex..questionMarkIndex]
+            : link[startIndex..];
+
+        id = id.Trim().TrimEnd('/');
+        return string.IsNullOrWhiteSpace(id) ? null : id;
+    }
+
     private async Task<DownloadResult> SendDownloadRequestAsync(List<string> links)
     {
         TcpClient? client = null;
         NetworkStream? stream = null;
-        
+
         try
         {
             client = new TcpClient();
             await client.ConnectAsync(SERVER_HOST, SERVER_PORT);
             stream = client.GetStream();
-            
+
             Debug.WriteLine($"Connected to {SERVER_HOST}:{SERVER_PORT}");
-            
+
             string dataToSend = string.Join("\n", links);
             byte[] sendData = Encoding.UTF8.GetBytes(dataToSend);
-            
+
             await stream.WriteAsync(sendData, 0, sendData.Length);
             Debug.WriteLine($"Sent {sendData.Length} bytes to server");
-            
+
             byte[] headerLengthBytes = new byte[4];
             int headerBytesRead = await stream.ReadAsync(headerLengthBytes, 0, 4);
-            
+
             if (headerBytesRead != 4)
                 return new DownloadResult { Success = false, ErrorMessage = "Failed to read response header" };
-            
+
             int headerLength = BitConverter.ToInt32(headerLengthBytes, 0);
             if (BitConverter.IsLittleEndian)
                 headerLength = System.Net.IPAddress.NetworkToHostOrder(headerLength);
-            
+
             byte[] headerBytes = new byte[headerLength];
             int headerJsonBytesRead = await ReadExactlyAsync(stream, headerBytes, headerLength);
-            
+
             if (headerJsonBytesRead != headerLength)
                 return new DownloadResult { Success = false, ErrorMessage = "Failed to read complete header" };
-            
+
             string headerJson = Encoding.UTF8.GetString(headerBytes);
             Debug.WriteLine($"Received header: {headerJson}");
-            
+
             var header = JsonSerializer.Deserialize<ServerResponse>(headerJson);
-            
+
             if (header == null)
                 return new DownloadResult { Success = false, ErrorMessage = "Invalid server response" };
-            
+
             if (header.status != "success")
                 return new DownloadResult { Success = false, ErrorMessage = header.message ?? "Unknown error" };
-            
+
             long fileSize = header.size;
             string fileName = header.filename ?? "downloads.zip";
-            
+
             Debug.WriteLine($"Receiving file: {fileName} ({fileSize / 1024 / 1024:F2} MB)");
-            
+
             const long CHUNK_SIZE = 8192;
             byte[] fileData = new byte[fileSize];
             long totalRead = 0;
             int lastProgress = 0;
             byte[] buffer = new byte[CHUNK_SIZE];
-            
+
             while (totalRead < fileSize)
             {
                 int toRead = (int)Math.Min(CHUNK_SIZE, fileSize - totalRead);
                 int chunkBytesRead = await stream.ReadAsync(buffer, 0, toRead);
-                
+
                 if (chunkBytesRead == 0)
                     break;
-                
+
                 Array.Copy(buffer, 0, fileData, totalRead, chunkBytesRead);
                 totalRead += chunkBytesRead;
-                
+
                 int progress = (int)((totalRead * 100) / fileSize);
                 if (progress >= lastProgress + 5)
                 {
                     lastProgress = progress;
                     Debug.WriteLine($"Download progress: {progress}% ({totalRead}/{fileSize} bytes)");
-                    
+
                     await MainThread.InvokeOnMainThreadAsync(() =>
                     {
                         SetStatus($"Downloading... {progress}%", Colors.White);
                     });
                 }
             }
-            
+
             Debug.WriteLine($"✓ Received {totalRead} bytes (expected {fileSize})");
-            
+
             if (totalRead != fileSize)
                 return new DownloadResult { Success = false, ErrorMessage = $"Incomplete download: received {totalRead}/{fileSize} bytes" };
-            
+
             return new DownloadResult { Success = true, ZipData = fileData, FileName = fileName };
         }
         catch (SocketException ex)
         {
             Debug.WriteLine($"Socket error: {ex.Message}");
-            return new DownloadResult 
-            { 
-                Success = false, 
-                ErrorMessage = $"Connection error: {ex.Message}\nMake sure the server is running on {SERVER_HOST}:{SERVER_PORT}" 
+            return new DownloadResult
+            {
+                Success = false,
+                ErrorMessage = $"Connection error: {ex.Message}\nMake sure the server is running on {SERVER_HOST}:{SERVER_PORT}"
             };
         }
         catch (Exception ex)
@@ -264,9 +293,9 @@ public partial class Download : ContentPage
         {
             string downloadFolder = Path.Combine(FileSystem.AppDataDirectory, "Downloads");
             Directory.CreateDirectory(downloadFolder);
-            
+
             string filePath = Path.Combine(downloadFolder, fileName);
-            
+
             int counter = 1;
             while (File.Exists(filePath))
             {
@@ -275,11 +304,11 @@ public partial class Download : ContentPage
                 filePath = Path.Combine(downloadFolder, $"{nameWithoutExt}_{counter}{extension}");
                 counter++;
             }
-            
+
             await File.WriteAllBytesAsync(filePath, zipData);
             Debug.WriteLine($"File saved: {filePath}");
             Debug.WriteLine($"File size: {zipData.Length} bytes");
-            
+
             try
             {
                 using (var zip = ZipFile.OpenRead(filePath))
@@ -294,7 +323,7 @@ public partial class Download : ContentPage
                 File.Delete(filePath);
                 throw new Exception("Downloaded ZIP file is corrupted. Please try again.");
             }
-            
+
             return filePath;
         }
         catch (Exception ex)
@@ -304,7 +333,7 @@ public partial class Download : ContentPage
         }
     }
 
-    private async Task ProcessDownloadedPlaylist(string zipFilePath)
+    private async Task ProcessDownloadedPlaylist(string zipFilePath, string? spotifyPlaylistId)
     {
         try
         {
@@ -319,18 +348,18 @@ public partial class Download : ContentPage
             Debug.WriteLine($"Playlist name from zip file: {playlistName}");
 
             string targetPlaylistPath = Path.Combine(FileSystem.AppDataDirectory, playlistName);
-            
+
             if (Directory.Exists(targetPlaylistPath))
             {
                 Debug.WriteLine($"Removing existing playlist folder: {targetPlaylistPath}");
                 Directory.Delete(targetPlaylistPath, true);
             }
-            
+
             await MainThread.InvokeOnMainThreadAsync(() =>
             {
                 SetStatus("Extracting files...", Colors.White);
             });
-            
+
             ZipFile.ExtractToDirectory(zipFilePath, targetPlaylistPath);
             Debug.WriteLine($"Extracted to: {targetPlaylistPath}");
 
@@ -339,12 +368,12 @@ public partial class Download : ContentPage
             {
                 var mp3Files = Directory.GetFiles(songsFolder, "*.mp3");
                 Debug.WriteLine($"Found {mp3Files.Length} MP3 files in songs folder");
-                
+
                 foreach (var mp3File in mp3Files)
                 {
                     string fileName = Path.GetFileName(mp3File);
                     string targetPath = Path.Combine(targetPlaylistPath, fileName);
-                    
+
                     int counter = 1;
                     while (File.Exists(targetPath))
                     {
@@ -353,11 +382,11 @@ public partial class Download : ContentPage
                         targetPath = Path.Combine(targetPlaylistPath, $"{nameWithoutExt}_{counter}{extension}");
                         counter++;
                     }
-                    
+
                     File.Move(mp3File, targetPath);
                     Debug.WriteLine($"Moved MP3: {fileName} -> {Path.GetFileName(targetPath)}");
                 }
-                
+
                 Directory.Delete(songsFolder, true);
                 Debug.WriteLine("Deleted songs folder");
             }
@@ -370,10 +399,8 @@ public partial class Download : ContentPage
             {
                 SetStatus("Integrating with database...", Colors.White);
             });
-            
-            await IntegratePlaylistWithDatabase(targetPlaylistPath, playlistName);
 
-            Debug.WriteLine($"ZIP file preserved at: {zipFilePath}");
+            await IntegratePlaylistWithDatabase(targetPlaylistPath, playlistName, spotifyPlaylistId);
 
             await MainThread.InvokeOnMainThreadAsync(() =>
             {
@@ -386,33 +413,41 @@ public partial class Download : ContentPage
             Debug.WriteLine($"Stack trace: {ex.StackTrace}");
             throw new Exception($"Failed to process playlist: {ex.Message}", ex);
         }
+        finally
+        {
+            ClearDownloadsFolder();
+        }
     }
 
-    private void LogDirectoryContents(string path, string indent)
+    private void ClearDownloadsFolder()
     {
         try
         {
-            var files = Directory.GetFiles(path);
-            foreach (var file in files)
+            string downloadFolder = Path.Combine(FileSystem.AppDataDirectory, "Downloads");
+            if (!Directory.Exists(downloadFolder))
+                return;
+
+            foreach (var file in Directory.GetFiles(downloadFolder))
             {
-                var fileInfo = new FileInfo(file);
-                Debug.WriteLine($"{indent}📄 {Path.GetFileName(file)} ({fileInfo.Length / 1024.0:F2} KB)");
+                try { File.Delete(file); }
+                catch (Exception ex) { Debug.WriteLine($"Failed deleting file '{file}': {ex.Message}"); }
             }
 
-            var directories = Directory.GetDirectories(path);
-            foreach (var directory in directories)
+            foreach (var dir in Directory.GetDirectories(downloadFolder))
             {
-                Debug.WriteLine($"{indent}📁 {Path.GetFileName(directory)}/");
-                LogDirectoryContents(directory, indent + "  ");
+                try { Directory.Delete(dir, true); }
+                catch (Exception ex) { Debug.WriteLine($"Failed deleting directory '{dir}': {ex.Message}"); }
             }
+
+            Debug.WriteLine("Downloads folder cleared.");
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"{indent}⚠ Error reading directory: {ex.Message}");
+            Debug.WriteLine($"Error clearing Downloads folder: {ex.Message}");
         }
     }
 
-    private async Task IntegratePlaylistWithDatabase(string playlistPath, string playlistName)
+    private async Task IntegratePlaylistWithDatabase(string playlistPath, string playlistName, string? spotifyPlaylistId)
     {
         try
         {
@@ -422,9 +457,9 @@ public partial class Download : ContentPage
             string songsDataPath = Path.Combine(playlistPath, "SONG_DATA.txt");
             if (!File.Exists(songsDataPath))
                 songsDataPath = Path.Combine(playlistPath, "SONGS_DATA.txt");
-            
+
             var songInfoList = new List<(int order, string title, string artist, string? link)>();
-            
+
             if (File.Exists(songsDataPath))
             {
                 var lines = await File.ReadAllLinesAsync(songsDataPath);
@@ -475,7 +510,9 @@ public partial class Download : ContentPage
             var playlist = new PlaylistEntity
             {
                 Name = playlistName,
-                SpotifyId = $"downloaded_{Guid.NewGuid():N}",
+                SpotifyId = !string.IsNullOrWhiteSpace(spotifyPlaylistId)
+    ? spotifyPlaylistId
+    : $"downloaded_{Guid.NewGuid():N}",
                 ImagePath = imagePath,
                 TotalTracks = songInfoList.Count,
                 CreatedAt = DateTime.UtcNow
@@ -496,7 +533,7 @@ public partial class Download : ContentPage
             foreach (var songInfo in songInfoList)
             {
                 string? mp3Path = FindBestMatchingMp3(mp3Files, songInfo.title, songInfo.artist);
-                
+
                 var song = new SongEntity
                 {
                     PlaylistId = playlistId,
@@ -509,7 +546,7 @@ public partial class Download : ContentPage
                 };
 
                 await App.Database.SaveSongAsync(song);
-                
+
                 if (mp3Path != null)
                     Debug.WriteLine($"Saved song: '{song.Title}' by '{song.Artist}' -> {Path.GetFileName(mp3Path)}");
                 else
@@ -531,21 +568,21 @@ public partial class Download : ContentPage
         try
         {
             string[] imageExtensions = { ".jpg", ".jpeg", ".png", ".webp", ".gif" };
-            
+
             foreach (var ext in imageExtensions)
             {
                 var imageFiles = Directory.GetFiles(playlistPath, $"*{ext}");
                 if (imageFiles.Length > 0)
                 {
-                    var preferredImage = imageFiles.FirstOrDefault(f => 
+                    var preferredImage = imageFiles.FirstOrDefault(f =>
                         Path.GetFileNameWithoutExtension(f).ToLower().Contains("cover") ||
                         Path.GetFileNameWithoutExtension(f).ToLower().Contains("playlist") ||
                         Path.GetFileNameWithoutExtension(f).ToLower().Contains("image"));
-                    
+
                     return preferredImage ?? imageFiles[0];
                 }
             }
-            
+
             return null;
         }
         catch (Exception ex)
@@ -630,23 +667,23 @@ public partial class Download : ContentPage
     protected override void OnDisappearing()
     {
         base.OnDisappearing();
-        
+
         Debug.WriteLine($"OnDisappearing called - _isNavigating: {_isNavigating}, _isDisposed: {_isDisposed}");
-        
+
         if (_isNavigating)
         {
             Debug.WriteLine("Skipping cleanup - navigation in progress");
             return;
         }
-        
+
         if (_isDisposed)
         {
             Debug.WriteLine("Already disposed");
             return;
         }
-        
+
         _isDisposed = true;
-        
+
         Debug.WriteLine("Download page cleanup completed");
     }
 
@@ -659,7 +696,7 @@ public partial class Download : ContentPage
             });
             return true;
         }
-        
+
         return base.OnBackButtonPressed();
     }
 

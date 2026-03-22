@@ -16,7 +16,8 @@ public partial class Download : ContentPage
     private bool _isNavigating = false;
 
     // Configuration for Python server
-    private const string SERVER_HOST = "192.168.1.49"; // Change to remote PC IP if needed
+    private const string DEFAULT_SERVER_HOST = "192.168.1.49"; // Change default if needed
+    private string _serverHost = DEFAULT_SERVER_HOST;
     private const int SERVER_PORT = 9999;
     private const long BUFFER_SIZE = 3000000000;
 
@@ -173,10 +174,10 @@ public partial class Download : ContentPage
         try
         {
             client = new TcpClient();
-            await client.ConnectAsync(SERVER_HOST, SERVER_PORT);
+            await client.ConnectAsync(_serverHost, SERVER_PORT);
             stream = client.GetStream();
 
-            Debug.WriteLine($"Connected to {SERVER_HOST}:{SERVER_PORT}");
+            Debug.WriteLine($"Connected to {_serverHost}:{SERVER_PORT}");
 
             string dataToSend = string.Join("\n", links);
             byte[] sendData = Encoding.UTF8.GetBytes(dataToSend);
@@ -259,7 +260,7 @@ public partial class Download : ContentPage
             return new DownloadResult
             {
                 Success = false,
-                ErrorMessage = $"Connection error: {ex.Message}\nMake sure the server is running on {SERVER_HOST}:{SERVER_PORT}"
+                ErrorMessage = $"Connection error: {ex.Message}\nMake sure the server is running on {_serverHost}:{SERVER_PORT}"
             };
         }
         catch (Exception ex)
@@ -700,6 +701,32 @@ public partial class Download : ContentPage
         return base.OnBackButtonPressed();
     }
 
+    private async void OnServerInfoClicked(object sender, EventArgs e)
+    {
+        string? enteredHost = await DisplayPromptAsync(
+            "Server IP",
+            "Enter server IP (or host name):",
+            accept: "Save",
+            cancel: "Cancel",
+            placeholder: "e.g. 192.168.1.49",
+            initialValue: _serverHost,
+            keyboard: Keyboard.Text);
+
+        if (string.IsNullOrWhiteSpace(enteredHost))
+            return;
+
+        enteredHost = enteredHost.Trim();
+
+        if (!IsValidServerHost(enteredHost))
+        {
+            await DisplayAlert("Invalid value", "Please enter a valid IP address or host name.", "OK");
+            return;
+        }
+
+        _serverHost = enteredHost;
+        SetStatus($"Server set to: {_serverHost}:{SERVER_PORT}", Colors.LightGreen);
+    }
+
     private class ServerResponse
     {
         public string status { get; set; } = "";
@@ -714,5 +741,12 @@ public partial class Download : ContentPage
         public byte[]? ZipData { get; set; }
         public string? FileName { get; set; }
         public string? ErrorMessage { get; set; }
+    }
+
+    private static bool IsValidServerHost(string host)
+    {
+        // Accept both IPv4/IPv6 and DNS names
+        return System.Net.IPAddress.TryParse(host, out _)
+               || Uri.CheckHostName(host) != UriHostNameType.Unknown;
     }
 }

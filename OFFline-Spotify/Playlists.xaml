@@ -129,7 +129,7 @@
                                     <ImageButton x:Name="DeleteButton"
                                                 Grid.Row="0"
                                                 Source="threedots.png"
-                                                BackgroundColor="Red"
+                                                BackgroundColor="Black"
                                                 CornerRadius="{OnPlatform Android=15, iOS=18, WinUI=20}"
                                                 WidthRequest="{OnPlatform Android=35, iOS=38, WinUI=40}"
                                                 HeightRequest="{OnPlatform Android=35, iOS=38, WinUI=40}"

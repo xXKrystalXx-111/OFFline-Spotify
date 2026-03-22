@@ -215,7 +215,7 @@
                                           VerticalOptions="Center">
                         <Button x:Name="PreviousButton" 
                                 Style="{StaticResource GradientButtonStyle}"
-                                Text="◀" 
+                                Text="◄" 
                                 FontSize="20"
                                 Clicked="Previous_Clicked"
                                 WidthRequest="{StaticResource ButtonSize}"
@@ -231,7 +231,7 @@
                         
                         <Button x:Name="NextButton" 
                                 Style="{StaticResource GradientButtonStyle}"
-                                Text="▶" 
+                                Text="►" 
                                 FontSize="20"
                                 Clicked="Next_Clicked"
                                 WidthRequest="{StaticResource ButtonSize}"

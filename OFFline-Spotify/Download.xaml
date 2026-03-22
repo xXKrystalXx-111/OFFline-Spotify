@@ -5,6 +5,14 @@
              Title="Download your content here"
              Shell.TitleColor="#e3e3e3">
 
+    <ContentPage.ToolbarItems>
+        <ToolbarItem
+            IconImageSource="fix.png"
+            Order="Primary"
+            Priority="0"
+            Clicked="OnServerInfoClicked" />
+    </ContentPage.ToolbarItems>
+
     <Grid>
         <!-- Background image -->
         <Image Source="background.png"

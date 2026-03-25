@@ -641,6 +641,15 @@ public partial class Download : ContentPage
             return string.Empty;
 
         return input.ToLower()
+            // Remove common downloader app prefixes and .app extensions
+            .Replace("soundloaders.app", "")
+            .Replace("__spotdown.app", "")
+            .Replace("spotdown.app", "")
+            .Replace("music.download", "")
+            // Remove any remaining .app patterns
+            .Replace(".app ", "")
+            .Replace(".app-", "")
+            .Replace("-(from", "")
             .Replace("?", "")
             .Replace("!", "")
             .Replace("'", "")

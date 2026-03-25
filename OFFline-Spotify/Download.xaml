@@ -14,15 +14,7 @@
     </ContentPage.ToolbarItems>
 
     <Grid>
-        <!-- Background image -->
-        <Image Source="background.png"
-               Aspect="AspectFill"
-               Opacity="0.35" />
-
-        <!-- Optional dark overlay for readability -->
-        <BoxView Color="#1A1A1A"
-                 Opacity="0.25" />
-
+        
         <ScrollView>
             <VerticalStackLayout Spacing="20" Padding="16" MaximumWidthRequest="600" HorizontalOptions="Center">
 

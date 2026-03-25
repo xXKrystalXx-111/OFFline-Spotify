@@ -815,6 +815,9 @@ namespace OFFline_Spotify
                     "Download missing MP3 files",
                     "Update playlist");
 
+                Debug.WriteLine($"Fix_Download action: '{action}'");
+
+                
                 if (action == "Download missing MP3 files")
                 {
                     bool confirmMissing = await DisplayAlert(
@@ -839,7 +842,7 @@ namespace OFFline_Spotify
 
                     await FixMissingDownloads(missingSongs);
                 }
-                else if (action == "Update playlist (-u)")
+                else if (action == "Update playlist")
                 {
                     bool confirmUpdate = await DisplayAlert(
                         "Confirm",
@@ -919,8 +922,8 @@ namespace OFFline_Spotify
 
         private async Task<DownloadResult> SendFixDownloadRequestAsync(string songRequests)
         {
-            const string SERVER_HOST = "192.168.1.49"; // Use same server as Download.xaml.cs
-            const int SERVER_PORT = 9999;
+            string serverHost = ServerEndpointSettings.GetHost();
+            const int SERVER_PORT = ServerEndpointSettings.ServerPort;
             const long BUFFER_SIZE = 3000000000;
 
             TcpClient? client = null;
@@ -928,19 +931,17 @@ namespace OFFline_Spotify
 
             try
             {
-                // Connect to server
                 client = new TcpClient();
-                await client.ConnectAsync(SERVER_HOST, SERVER_PORT);
+                Debug.WriteLine($"SendFixDownloadRequestAsync host: {serverHost}:{SERVER_PORT}");
+                await client.ConnectAsync(serverHost, SERVER_PORT);
                 stream = client.GetStream();
 
-                Debug.WriteLine($"Connected to {SERVER_HOST}:{SERVER_PORT}");
+                Debug.WriteLine($"Connected to {serverHost}:{SERVER_PORT}");
 
-                // Send song requests
                 byte[] sendData = Encoding.UTF8.GetBytes(songRequests);
                 await stream.WriteAsync(sendData, 0, sendData.Length);
                 Debug.WriteLine($"Sent {sendData.Length} bytes to server");
 
-                // Read response header (4 bytes = header length)
                 byte[] headerLengthBytes = new byte[4];
                 int bytesRead = await stream.ReadAsync(headerLengthBytes, 0, 4);
 
@@ -955,11 +956,8 @@ namespace OFFline_Spotify
 
                 int headerLength = BitConverter.ToInt32(headerLengthBytes, 0);
                 if (BitConverter.IsLittleEndian)
-                {
                     headerLength = System.Net.IPAddress.NetworkToHostOrder(headerLength);
-                }
 
-                // Read header JSON
                 byte[] headerBytes = new byte[headerLength];
                 bytesRead = await ReadExactlyAsync(stream, headerBytes, headerLength);
 
@@ -986,7 +984,6 @@ namespace OFFline_Spotify
                     };
                 }
 
-                // Read file content
                 long fileSize = header.size;
                 string fileName = header.filename ?? "fix_downloads.zip";
 
@@ -1021,7 +1018,7 @@ namespace OFFline_Spotify
                 return new DownloadResult
                 {
                     Success = false,
-                    ErrorMessage = $"Connection error: {ex.Message}\nMake sure the server is running on {SERVER_HOST}:{SERVER_PORT}"
+                    ErrorMessage = $"Connection error: {ex.Message}\nMake sure the server is running on {serverHost}:{SERVER_PORT}"
                 };
             }
             catch (Exception ex)
@@ -1427,6 +1424,8 @@ namespace OFFline_Spotify
             string requestData = $"{playlistLink} -u";
 
             Debug.WriteLine($"Sending update request: {requestData}");
+            string serverHost = ServerEndpointSettings.GetHost();
+            Debug.WriteLine($"Update uses host: {serverHost}:{ServerEndpointSettings.ServerPort}");
 
             var result = await SendFixDownloadRequestAsync(requestData);
             if (!result.Success)

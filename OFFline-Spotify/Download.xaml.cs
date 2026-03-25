@@ -17,13 +17,14 @@ public partial class Download : ContentPage
 
     // Configuration for Python server
     private const string DEFAULT_SERVER_HOST = "192.168.1.49"; // Change default if needed
-    private string _serverHost = DEFAULT_SERVER_HOST;
-    private const int SERVER_PORT = 9999;
+    private string _serverHost = ServerEndpointSettings.GetHost();
+    private const int SERVER_PORT = ServerEndpointSettings.ServerPort;
     private const long BUFFER_SIZE = 3000000000;
 
     public Download()
     {
         InitializeComponent();
+        _serverHost = ServerEndpointSettings.GetHost();
     }
 
     // Helper to update the status label and show/hide its frame
@@ -717,13 +718,15 @@ public partial class Download : ContentPage
 
         enteredHost = enteredHost.Trim();
 
-        if (!IsValidServerHost(enteredHost))
+        if (!ServerEndpointSettings.IsValidHost(enteredHost))
         {
             await DisplayAlert("Invalid value", "Please enter a valid IP address or host name.", "OK");
             return;
         }
 
         _serverHost = enteredHost;
+        ServerEndpointSettings.SetHost(_serverHost);
+
         SetStatus($"Server set to: {_serverHost}:{SERVER_PORT}", Colors.LightGreen);
     }
 

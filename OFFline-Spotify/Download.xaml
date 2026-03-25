@@ -71,7 +71,7 @@
                                 <Label.FormattedText>
                                     <FormattedString>
                                         <Span Text="💡 Tip: " FontAttributes="Bold" TextColor="#1DB954"/>
-                                        <Span Text="Make sure your playlist is public before downloading."/>
+                                        <Span Text="Make sure your playlist is public and set correct ip of server before downloading."/>
                                     </FormattedString>
                                 </Label.FormattedText>
                             </Label>

@@ -641,27 +641,47 @@ public partial class Download : ContentPage
             return string.Empty;
 
         return input.ToLower()
-            // Remove common downloader app prefixes and .app extensions
+            // Remove common downloader app prefixes
             .Replace("soundloaders.app", "")
+            .Replace("soundloaders app", "")
+            .Replace("soundloaders_app", "")
             .Replace("__spotdown.app", "")
             .Replace("spotdown.app", "")
+            .Replace("spotdown app", "")
+            .Replace("spotdown_app", "")
             .Replace("music.download", "")
-            // Remove any remaining .app patterns
+            .Replace("music download", "")
+            .Replace("music_download", "")
             .Replace(".app ", "")
             .Replace(".app-", "")
+            .Replace("_app_", "")
+            .Replace("_app ", "")
             .Replace("-(from", "")
+            // Remove ALL special characters
+            .Replace(".", "")      // <-- ADD THIS
+            .Replace("&", "")
+            .Replace("|", "")
+            .Replace("*", "")
+            .Replace(":", "")
+            .Replace(";", "")
+            .Replace("<", "")
+            .Replace(">", "")
+            .Replace("/", "")
+            .Replace("\\", "")
             .Replace("?", "")
             .Replace("!", "")
             .Replace("'", "")
             .Replace("\"", "")
+            .Replace(",", "")      // <-- ADD THIS too
             .Replace("(", "")
             .Replace(")", "")
             .Replace("[", "")
             .Replace("]", "")
-            .Replace("__spotdown.app", "")
             .Replace("-", " ")
             .Replace("_", " ")
-            .Trim();
+            .Trim()
+            .Replace("  ", " ")
+            .Replace("  ", " ");
     }
 
     private bool IsFuzzyMatch(string? trackName, string? fileName)

@@ -411,20 +411,49 @@ namespace OFFline_Spotify
         {
             if (string.IsNullOrEmpty(input))
                 return string.Empty;
-                
+
             return input.ToLower()
-                .Replace("?", "")           // Remove question marks
-                .Replace("!", "")           // Remove exclamation marks
-                .Replace("'", "")           // Remove apostrophes
-                .Replace("\"", "")          // Remove quotes
-                .Replace("(", "")           // Remove parentheses
+                // Remove common downloader app prefixes
+                .Replace("soundloaders.app", "")
+                .Replace("soundloaders app", "")
+                .Replace("soundloaders_app", "")
+                .Replace("__spotdown.app", "")
+                .Replace("spotdown.app", "")
+                .Replace("spotdown app", "")
+                .Replace("spotdown_app", "")
+                .Replace("music.download", "")
+                .Replace("music download", "")
+                .Replace("music_download", "")
+                .Replace(".app ", "")
+                .Replace(".app-", "")
+                .Replace("_app_", "")
+                .Replace("_app ", "")
+                .Replace("-(from", "")
+                // Remove ALL special characters
+                .Replace(".", "")      // <-- ADD THIS
+                .Replace("&", "")
+                .Replace("|", "")
+                .Replace("*", "")
+                .Replace(":", "")
+                .Replace(";", "")
+                .Replace("<", "")
+                .Replace(">", "")
+                .Replace("/", "")
+                .Replace("\\", "")
+                .Replace("?", "")
+                .Replace("!", "")
+                .Replace("'", "")
+                .Replace("\"", "")
+                .Replace(",", "")      // <-- ADD THIS too
+                .Replace("(", "")
                 .Replace(")", "")
-                .Replace("[", "")           // Remove brackets
+                .Replace("[", "")
                 .Replace("]", "")
-                .Replace("__spotdown.app", "") // Remove spotdown suffix
-                .Replace("-", " ")          // Replace dashes with spaces
-                .Replace("_", " ")          // Replace underscores with spaces
-                .Trim();
+                .Replace("-", " ")
+                .Replace("_", " ")
+                .Trim()
+                .Replace("  ", " ")
+                .Replace("  ", " ");
         }
 
         // Helper method for fuzzy matching

@@ -14,7 +14,18 @@
     </ContentPage.ToolbarItems>
 
     <Grid>
-        
+        <Image Source="background.png"
+            Aspect="AspectFill"
+            Opacity="0.35">
+
+            <Image.IsVisible>
+                <OnPlatform x:TypeArguments="x:Boolean">
+                    <On Platform="Android" Value="False" />
+                    <On Platform="WinUI" Value="True" />
+                </OnPlatform>
+            </Image.IsVisible>
+
+        </Image>
         <ScrollView>
             <VerticalStackLayout Spacing="20" Padding="16" MaximumWidthRequest="600" HorizontalOptions="Center">
 

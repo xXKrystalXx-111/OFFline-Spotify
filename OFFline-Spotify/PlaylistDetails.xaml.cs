@@ -1649,7 +1649,41 @@ namespace OFFline_Spotify
         }
     }
 
-    // Add this class at the bottom of your file, outside the PlaylistDetails class
+    
+
+    public class Mp3CoverConverter : IValueConverter
+    {
+        public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            var filePath = value as string;
+
+            if (string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath))
+                return "music.png";
+
+            try
+            {
+                using var tagFile = TagLib.File.Create(filePath);
+                var picture = tagFile.Tag.Pictures?.FirstOrDefault();
+
+                if (picture?.Data?.Data is { Length: > 0 } imageBytes)
+                {
+                    // Return a NEW stream each time for MAUI image binding
+                    return ImageSource.FromStream(() => new MemoryStream(imageBytes));
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Cover extraction failed for '{filePath}': {ex}");
+            }
+
+            return "music.png";
+        }
+
+        public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+            => throw new NotImplementedException();
+    }
+
+   
     public class Mp3FileExistsConverter : IValueConverter
     {
         public object Convert(object value, Type targetType, object parameter, CultureInfo culture)

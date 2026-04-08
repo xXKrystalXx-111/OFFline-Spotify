@@ -22,6 +22,7 @@
         <ResourceDictionary>
             <local:Mp3FileExistsConverter x:Key="Mp3FileExistsConverter"/>
             <local:SongBackgroundConverter x:Key="SongBackgroundConverter"/>
+            <local:Mp3CoverConverter x:Key="Mp3CoverConverter" />
             
             <!-- Responsive font sizes -->
             <OnPlatform x:Key="TitleFontSize" x:TypeArguments="x:Double">
@@ -61,23 +62,40 @@
                               BackgroundColor="{Binding IsCurrentlyPlaying, Converter={StaticResource SongBackgroundConverter}}">
                             
                             <!-- Song Info -->
-                            <StackLayout Grid.Row="0" 
-                                        Grid.Column="0" 
-                                        Spacing="4"
-                                        VerticalOptions="Center">
-                                <Label Text="{Binding Title}" 
-                                       TextColor="{Binding Mp3FilePath, Converter={StaticResource Mp3FileExistsConverter}}"
-                                       FontAttributes="Bold"
-                                       FontSize="{StaticResource TitleFontSize}"
-                                       LineBreakMode="TailTruncation"
-                                       MaxLines="1" />
-                                <Label Text="{Binding Artist}" 
-                                       FontSize="{StaticResource SubtitleFontSize}" 
-                                       TextColor="Gray"
-                                       LineBreakMode="TailTruncation"
-                                       MaxLines="1" />
-                                
-                            </StackLayout>
+                            <Grid Grid.Row="0"
+                                  Grid.Column="0"
+                                  ColumnDefinitions="Auto,*"
+                                  ColumnSpacing="10"
+                                  VerticalOptions="Center">
+                                <Border StrokeThickness="2"
+                                        Stroke="{Binding Mp3FilePath, Converter={StaticResource Mp3FileExistsConverter}, ConverterParameter='border'}"
+                                        BackgroundColor="Transparent"
+                                        StrokeShape="RoundRectangle 5"
+                                        Padding="0">
+                                    <Image Grid.Column="0"
+                                       Source="{Binding Mp3FilePath, Converter={StaticResource Mp3CoverConverter}}"
+                                       WidthRequest="56"
+                                       HeightRequest="56"
+                                       Aspect="AspectFill"
+                                       />
+                                </Border>
+
+                                <VerticalStackLayout Grid.Column="1"
+                                                     Spacing="2"
+                                                     VerticalOptions="Center">
+                                    <Label Text="{Binding Title}"
+                                           TextColor="{Binding Mp3FilePath, Converter={StaticResource Mp3FileExistsConverter}}"
+                                           FontAttributes="Bold"
+                                           FontSize="{StaticResource TitleFontSize}"
+                                           LineBreakMode="TailTruncation"
+                                           MaxLines="1" />
+                                    <Label Text="{Binding Artist}"
+                                           FontSize="{StaticResource SubtitleFontSize}"
+                                           TextColor="Gray"
+                                           LineBreakMode="TailTruncation"
+                                           MaxLines="1" />
+                                </VerticalStackLayout>
+                            </Grid>
                             
                             <!-- Warning icon for missing files -->
                             <Label Grid.Row="0" 

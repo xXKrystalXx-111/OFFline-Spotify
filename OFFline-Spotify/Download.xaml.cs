@@ -672,7 +672,7 @@ public partial class Download : ContentPage
             .Replace("!", "")
             .Replace("'", "")
             .Replace("\"", "")
-            .Replace(",", "")      // <-- ADD THIS too
+            .Replace(",", "")
             .Replace("(", "")
             .Replace(")", "")
             .Replace("[", "")
